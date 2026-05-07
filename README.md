@@ -4,10 +4,19 @@ A production-style Linux security operations lab built on Ubuntu Server virtual 
 
 The goal of this project is to demonstrate practical Linux administration, infrastructure automation, security hardening, service deployment, monitoring, alerting, centralized logging, and validation through documented tests.
 
+## Current State
+
+The lab currently runs in a transitional multi-node state.
+
+- `vm-app-01` runs the application service and the current single-node monitoring/logging stack.
+- `vm-observability-01` has been onboarded into Ansible and prepared for a future observability/logging split.
+- The next major milestone is to migrate Prometheus, Grafana, Elasticsearch, and Kibana from `vm-app-01` to `vm-observability-01`.
+
 ## Current Features
 
-- Ubuntu Server VM deployed in VMware Workstation Pro
-- Dedicated Ansible automation user
+- Ubuntu Server virtual machines deployed in VMware Workstation Pro
+- WSL Ubuntu used as the Ansible control node
+- Dedicated `ansible` automation user on managed nodes
 - SSH key-based Ansible access
 - UFW firewall with default-deny inbound policy
 - Fail2ban SSH brute-force protection
@@ -26,10 +35,9 @@ The goal of this project is to demonstrate practical Linux administration, infra
 - Filebeat deployed for centralized log collection
 - Separate Elasticsearch index patterns for auth, Fail2ban, Nginx, and Docker logs
 - Kibana Data Views created for switching between log categories
-- Monitoring and logging ports allowed through UFW
+- Second Ubuntu Server VM onboarded as `vm-observability-01`
 - Manual validation documented with screenshots and test notes
 - Ansible idempotence verified with repeated playbook runs
-- Second Ubuntu Server VM onboarded as `vm-observability-01` for future observability/logging split
 
 ## Architecture
 
@@ -38,23 +46,53 @@ Windows Host
 ├── WSL Ubuntu
 │   └── Ansible control node
 └── VMware Workstation Pro
-    └── vm-app-01
+    ├── vm-app-01
+    │   ├── Ubuntu Server
+    │   ├── UFW
+    │   ├── Fail2ban
+    │   ├── Docker
+    │   ├── Nginx container
+    │   ├── Monitoring stack
+    │   │   ├── Prometheus
+    │   │   │   └── Alert rules
+    │   │   ├── Grafana
+    │   │   │   ├── Prometheus datasource
+    │   │   │   └── Linux Node Overview dashboard
+    │   │   └── node_exporter
+    │   └── Logging stack
+    │       ├── Elasticsearch
+    │       ├── Kibana
+    │       └── Filebeat
+    │
+    └── vm-observability-01
         ├── Ubuntu Server
         ├── UFW
         ├── Fail2ban
         ├── Docker
-        ├── Nginx container
-        ├── Monitoring stack
-        │   ├── Prometheus
-        │   │   └── Alert rules
-        │   ├── Grafana
-        │   │   ├── Prometheus datasource
-        │   │   └── Linux Node Overview dashboard
-        │   └── node_exporter
-        └── Logging stack
-            ├── Elasticsearch
-            ├── Kibana
-            └── Filebeat
+        └── Prepared observability node
+```
+
+## Target Architecture
+
+The next planned architecture separates application workloads from observability workloads.
+
+```txt
+Windows Host
+├── WSL Ubuntu
+│   └── Ansible control node
+└── VMware Workstation Pro
+    ├── vm-app-01
+    │   ├── Nginx
+    │   ├── UFW
+    │   ├── Fail2ban
+    │   ├── node_exporter
+    │   └── Filebeat
+    │
+    └── vm-observability-01
+        ├── Prometheus
+        ├── Grafana
+        ├── Elasticsearch
+        └── Kibana
 ```
 
 ## Ansible Roles
@@ -69,6 +107,27 @@ Windows Host
 | `monitoring_stack` | Deploys Prometheus, Grafana, node_exporter, Grafana provisioning, and Prometheus alert rules |
 | `logging_stack` | Deploys Elasticsearch, Kibana, and Filebeat for centralized logging |
 
+## Inventory Layout
+
+The inventory is split into host groups:
+
+```ini
+[app]
+vm-app-01 ansible_host=<APP_VM_IP_ADDRESS> ansible_user=ansible ansible_ssh_private_key_file=<PATH_TO_PRIVATE_KEY>
+
+[observability]
+vm-observability-01 ansible_host=<OBSERVABILITY_VM_IP_ADDRESS> ansible_user=ansible ansible_ssh_private_key_file=<PATH_TO_PRIVATE_KEY>
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+```
+
+The local `ansible/inventory.ini` file is ignored by Git. A safe template is provided as:
+
+```txt
+ansible/inventory.example.ini
+```
+
 ## Usage
 
 Copy the example inventory:
@@ -77,7 +136,7 @@ Copy the example inventory:
 cp ansible/inventory.example.ini ansible/inventory.ini
 ```
 
-Edit `ansible/inventory.ini` and set your VM IP address, SSH user, and private key path.
+Edit `ansible/inventory.ini` and set your VM IP addresses, SSH user, and private key path.
 
 Run the playbook:
 
@@ -93,17 +152,48 @@ ansible-playbook -i ansible/inventory.ini ansible/site.yml
 
 A clean second run should report no unnecessary changes.
 
-## Exposed Services
+## Current Service Placement
 
-| Service | Port | URL |
-|---|---:|---|
-| Nginx | 80 | `http://<VM_IP_ADDRESS>` |
-| Prometheus | 9090 | `http://<VM_IP_ADDRESS>:9090` |
-| Grafana | 3000 | `http://<VM_IP_ADDRESS>:3000` |
-| Elasticsearch | 9200 | `http://<VM_IP_ADDRESS>:9200` |
-| Kibana | 5601 | `http://<VM_IP_ADDRESS>:5601` |
+At this stage, the application, monitoring, and logging services still run on `vm-app-01`.
+
+| Service | Current host | Port | URL |
+|---|---|---:|---|
+| Nginx | `vm-app-01` | 80 | `http://<APP_VM_IP_ADDRESS>` |
+| Prometheus | `vm-app-01` | 9090 | `http://<APP_VM_IP_ADDRESS>:9090` |
+| Grafana | `vm-app-01` | 3000 | `http://<APP_VM_IP_ADDRESS>:3000` |
+| Elasticsearch | `vm-app-01` | 9200 | `http://<APP_VM_IP_ADDRESS>:9200` |
+| Kibana | `vm-app-01` | 5601 | `http://<APP_VM_IP_ADDRESS>:5601` |
+
+`vm-observability-01` currently has only the common baseline installed. It is prepared for the next migration step.
 
 ## Validation
+
+### Ansible connectivity
+
+Both nodes are managed through Ansible.
+
+```bash
+ansible all -i ansible/inventory.ini -m ping
+```
+
+Expected result:
+
+```txt
+vm-app-01 | SUCCESS
+vm-observability-01 | SUCCESS
+```
+
+Privilege escalation is validated with:
+
+```bash
+ansible all -i ansible/inventory.ini -m command -a "whoami" -b
+```
+
+Expected result:
+
+```txt
+root
+```
 
 ### Fail2ban SSH ban test
 
@@ -125,7 +215,7 @@ Banned IP list: <HOST_PRIVATE_IP>
 The Nginx container deployment was validated with:
 
 ```bash
-curl http://<VM_IP_ADDRESS>
+curl http://<APP_VM_IP_ADDRESS>
 ```
 
 Expected response:
@@ -141,7 +231,7 @@ Expected response:
 Prometheus readiness was validated with:
 
 ```bash
-curl http://<VM_IP_ADDRESS>:9090/-/ready
+curl http://<APP_VM_IP_ADDRESS>:9090/-/ready
 ```
 
 Expected response:
@@ -155,7 +245,7 @@ Prometheus Server is Ready.
 Prometheus target health was checked in the web UI:
 
 ```txt
-http://<VM_IP_ADDRESS>:9090
+http://<APP_VM_IP_ADDRESS>:9090
 Status -> Target health
 ```
 
@@ -201,7 +291,7 @@ HighRootDiskUsage
 Alert rules can be checked in the Prometheus web UI:
 
 ```txt
-http://<VM_IP_ADDRESS>:9090/alerts
+http://<APP_VM_IP_ADDRESS>:9090/alerts
 ```
 
 ### NodeExporterDown alert test
@@ -233,7 +323,7 @@ docker start lab-node-exporter
 Elasticsearch was validated with:
 
 ```bash
-curl http://<VM_IP_ADDRESS>:9200
+curl http://<APP_VM_IP_ADDRESS>:9200
 ```
 
 Expected result:
@@ -245,7 +335,7 @@ tagline: You Know, for Search
 
 ### Kibana Data Views
 
-Kibana Data Views were created for switching between centralized log categories:
+Kibana Data Views were created for switching between centralized log categories.
 
 | Data View | Index pattern |
 |---|---|
@@ -258,7 +348,7 @@ Kibana Data Views were created for switching between centralized log categories:
 Logging indices can be checked with:
 
 ```bash
-curl "http://<VM_IP_ADDRESS>:9200/_cat/indices/logs-*?v"
+curl "http://<APP_VM_IP_ADDRESS>:9200/_cat/indices/logs-*?v"
 ```
 
 ## Documentation
@@ -286,15 +376,17 @@ Current milestone:
 - Elasticsearch, Kibana, and Filebeat deployed
 - Centralized logging configured for auth, Fail2ban, Nginx, and Docker logs
 - Kibana Data Views created for separate log categories
-- UFW rules managed for SSH, HTTP, Prometheus, Grafana, Elasticsearch, and Kibana
+- Second VM onboarded as `vm-observability-01`
+- Common baseline applied to both nodes
+- Existing single-node service layout kept functional during transition
 - Validation documented with screenshots
 - Idempotence verified with repeated Ansible runs
 
 Next planned milestone:
 
-- Multi-node observability split
-- Kibana dashboard provisioning
-- Structured parsing for Nginx access logs
-- Elasticsearch ingest pipelines
-- Alertmanager integration
-- Custom IDS integration for flow logs and live traffic analysis
+- Split monitoring and logging roles into backend services and lightweight agents
+- Move Prometheus, Grafana, Elasticsearch, and Kibana to `vm-observability-01`
+- Keep Nginx, node_exporter, and Filebeat on `vm-app-01`
+- Update Prometheus scrape targets for the app node
+- Update Filebeat output to send logs to Elasticsearch on the observability node
+- Validate cross-node metrics and log ingestion
