@@ -1,0 +1,52 @@
+---
+- name: Set vm.max_map_count for Elasticsearch
+  ansible.posix.sysctl:
+    name: vm.max_map_count
+    value: "262144"
+    state: present
+    reload: true
+
+- name: Create logging stack directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /opt/lab-logging
+    - /opt/lab-logging/filebeat
+
+- name: Deploy Filebeat configuration
+  ansible.builtin.template:
+    src: filebeat.yml.j2
+    dest: /opt/lab-logging/filebeat/filebeat.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy Elastic Stack Docker Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/lab-logging/docker-compose.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Allow Elasticsearch through UFW
+  community.general.ufw:
+    rule: allow
+    port: "9200"
+    proto: tcp
+
+- name: Allow Kibana through UFW
+  community.general.ufw:
+    rule: allow
+    port: "5601"
+    proto: tcp
+
+- name: Start Elastic logging stack
+  community.docker.docker_compose_v2:
+    project_src: /opt/lab-logging
+    state: present
+    recreate: auto

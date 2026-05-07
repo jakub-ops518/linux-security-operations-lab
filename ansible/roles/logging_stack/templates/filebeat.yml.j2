@@ -1,0 +1,76 @@
+setup.ilm.enabled: false
+setup.template.name: "lab-logs"
+setup.template.pattern: "logs-*"
+
+filebeat.inputs:
+  - type: filestream
+    id: linux-auth-logs
+    enabled: true
+    paths:
+      - /host/var/log/auth.log
+    fields:
+      log_type: linux_auth
+      lab_host: vm-app-01
+    fields_under_root: true
+
+  - type: filestream
+    id: fail2ban-logs
+    enabled: true
+    paths:
+      - /host/var/log/fail2ban.log
+    fields:
+      log_type: fail2ban
+      lab_host: vm-app-01
+    fields_under_root: true
+
+  - type: filestream
+    id: nginx-access-logs
+    enabled: true
+    paths:
+      - /host/opt/lab-nginx/logs/access.log
+    fields:
+      log_type: nginx_access
+      lab_host: vm-app-01
+      service_name: nginx
+    fields_under_root: true
+
+  - type: filestream
+    id: docker-container-logs
+    enabled: true
+    parsers:
+      - container: ~
+    paths:
+      - /host/var/lib/docker/containers/*/*.log
+    fields:
+      log_type: docker_container
+      lab_host: vm-app-01
+    fields_under_root: true
+
+processors:
+  - add_host_metadata: ~
+  - add_docker_metadata:
+      host: "unix:///var/run/docker.sock"
+
+output.elasticsearch:
+  hosts:
+    - "http://elasticsearch:9200"
+  index: "logs-generic-%{+yyyy.MM.dd}"
+  indices:
+    - index: "logs-linux-auth-%{+yyyy.MM.dd}"
+      when.equals:
+        log_type: "linux_auth"
+
+    - index: "logs-fail2ban-%{+yyyy.MM.dd}"
+      when.equals:
+        log_type: "fail2ban"
+
+    - index: "logs-nginx-access-%{+yyyy.MM.dd}"
+      when.equals:
+        log_type: "nginx_access"
+
+    - index: "logs-docker-%{+yyyy.MM.dd}"
+      when.equals:
+        log_type: "docker_container"
+
+setup.kibana:
+  host: "http://kibana:5601"

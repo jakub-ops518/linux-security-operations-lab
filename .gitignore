@@ -13,3 +13,9 @@ yes.pub
 # OS files
 .DS_Store
 Thumbs.db
+
+# Accidental pasted shell output
+.alerts-*
+.kibana_ingest*
+alias
+}

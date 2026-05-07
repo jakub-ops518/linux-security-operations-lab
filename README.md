@@ -2,7 +2,7 @@
 
 A production-style Linux security operations lab built on Ubuntu Server virtual machines and managed with Ansible.
 
-The goal of this project is to demonstrate practical Linux administration, infrastructure automation, basic security hardening, service deployment, monitoring, alerting, and validation through documented tests.
+The goal of this project is to demonstrate practical Linux administration, infrastructure automation, security hardening, service deployment, monitoring, alerting, centralized logging, and validation through documented tests.
 
 ## Current Features
 
@@ -21,7 +21,12 @@ The goal of this project is to demonstrate practical Linux administration, infra
 - Linux Node Overview dashboard provisioned automatically in Grafana
 - Prometheus alert rules deployed automatically
 - NodeExporterDown alert validated through simulated outage
-- Monitoring ports allowed through UFW
+- Elasticsearch deployed through Docker Compose
+- Kibana deployed through Docker Compose
+- Filebeat deployed for centralized log collection
+- Separate Elasticsearch index patterns for auth, Fail2ban, Nginx, and Docker logs
+- Kibana Data Views created for switching between log categories
+- Monitoring and logging ports allowed through UFW
 - Manual validation documented with screenshots and test notes
 - Ansible idempotence verified with repeated playbook runs
 
@@ -38,13 +43,17 @@ Windows Host
         ├── Fail2ban
         ├── Docker
         ├── Nginx container
-        └── Monitoring stack
-            ├── Prometheus
-            │   └── Alert rules
-            ├── Grafana
-            │   ├── Prometheus datasource
-            │   └── Linux Node Overview dashboard
-            └── node_exporter
+        ├── Monitoring stack
+        │   ├── Prometheus
+        │   │   └── Alert rules
+        │   ├── Grafana
+        │   │   ├── Prometheus datasource
+        │   │   └── Linux Node Overview dashboard
+        │   └── node_exporter
+        └── Logging stack
+            ├── Elasticsearch
+            ├── Kibana
+            └── Filebeat
 ```
 
 ## Ansible Roles
@@ -57,6 +66,7 @@ Windows Host
 | `docker` | Installs and enables Docker |
 | `nginx_container` | Deploys a containerized Nginx service |
 | `monitoring_stack` | Deploys Prometheus, Grafana, node_exporter, Grafana provisioning, and Prometheus alert rules |
+| `logging_stack` | Deploys Elasticsearch, Kibana, and Filebeat for centralized logging |
 
 ## Usage
 
@@ -89,6 +99,8 @@ A clean second run should report no unnecessary changes.
 | Nginx | 80 | `http://<VM_IP_ADDRESS>` |
 | Prometheus | 9090 | `http://<VM_IP_ADDRESS>:9090` |
 | Grafana | 3000 | `http://<VM_IP_ADDRESS>:3000` |
+| Elasticsearch | 9200 | `http://<VM_IP_ADDRESS>:9200` |
+| Kibana | 5601 | `http://<VM_IP_ADDRESS>:5601` |
 
 ## Validation
 
@@ -215,6 +227,39 @@ The service was restored after the test:
 docker start lab-node-exporter
 ```
 
+### Elasticsearch readiness test
+
+Elasticsearch was validated with:
+
+```bash
+curl http://<VM_IP_ADDRESS>:9200
+```
+
+Expected result:
+
+```txt
+cluster_name: docker-cluster
+tagline: You Know, for Search
+```
+
+### Kibana Data Views
+
+Kibana Data Views were created for switching between centralized log categories:
+
+| Data View | Index pattern |
+|---|---|
+| Linux Auth Logs | `logs-linux-auth-*` |
+| Fail2ban Events | `logs-fail2ban-*` |
+| Nginx Access Logs | `logs-nginx-access-*` |
+| Docker Container Logs | `logs-docker-*` |
+| All Lab Logs | `logs-*` |
+
+Logging indices can be checked with:
+
+```bash
+curl "http://<VM_IP_ADDRESS>:9200/_cat/indices/logs-*?v"
+```
+
 ## Documentation
 
 - [Security hardening](docs/security-hardening.md)
@@ -223,6 +268,7 @@ docker start lab-node-exporter
 - [Monitoring stack deployment test](docs/monitoring-stack-deployment.md)
 - [Prometheus alert rules validation](docs/validation/prometheus-alert-rules.md)
 - [NodeExporterDown alert test](docs/validation/node-exporter-down-alert-test.md)
+- [Elastic Stack logging Data Views](docs/validation/elastic-logging-data-views.md)
 
 ## Project Status
 
@@ -235,13 +281,17 @@ Current milestone:
 - Grafana Linux Node Overview dashboard provisioned automatically
 - Prometheus alert rules deployed automatically
 - NodeExporterDown alert validated through simulated outage
-- UFW rules managed for SSH, HTTP, Prometheus, and Grafana
+- Elasticsearch, Kibana, and Filebeat deployed
+- Centralized logging configured for auth, Fail2ban, Nginx, and Docker logs
+- Kibana Data Views created for separate log categories
+- UFW rules managed for SSH, HTTP, Prometheus, Grafana, Elasticsearch, and Kibana
 - Validation documented with screenshots
 - Idempotence verified with repeated Ansible runs
 
 Next planned milestone:
 
+- Kibana dashboard provisioning
+- Structured parsing for Nginx access logs
+- Elasticsearch ingest pipelines
 - Alertmanager integration
-- Alert notification routing
-- Log collection with Loki
 - Custom IDS integration for flow logs and live traffic analysis

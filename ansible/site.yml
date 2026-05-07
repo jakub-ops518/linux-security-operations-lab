@@ -10,3 +10,4 @@
     - docker
     - nginx_container
     - monitoring_stack
+    - logging_stack

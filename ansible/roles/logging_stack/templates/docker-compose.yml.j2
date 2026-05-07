@@ -1,0 +1,55 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: lab-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - logging
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.3
+    container_name: lab-kibana
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    networks:
+      - logging
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.3
+    container_name: lab-filebeat
+    restart: unless-stopped
+    user: root
+    depends_on:
+      - elasticsearch
+    command:
+      - "--strict.perms=false"
+      - "-e"
+    volumes:
+      - /opt/lab-logging/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/log:/host/var/log:ro
+      - /var/lib/docker/containers:/host/var/lib/docker/containers:ro
+      - /opt/lab-nginx/logs:/host/opt/lab-nginx/logs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - logging
+
+volumes:
+  elasticsearch_data:
+
+networks:
+  logging:
+    driver: bridge
