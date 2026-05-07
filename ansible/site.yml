@@ -9,3 +9,4 @@
     - fail2ban
     - docker
     - nginx_container
+    - monitoring_stack

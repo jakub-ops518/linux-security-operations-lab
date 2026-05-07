@@ -1,0 +1,41 @@
+---
+- name: Create monitoring directory
+  ansible.builtin.file:
+    path: /opt/lab-monitoring/prometheus
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy Prometheus configuration
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: /opt/lab-monitoring/prometheus/prometheus.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy monitoring Docker Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/lab-monitoring/docker-compose.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Allow Prometheus through UFW
+  community.general.ufw:
+    rule: allow
+    port: "9090"
+    proto: tcp
+
+- name: Allow Grafana through UFW
+  community.general.ufw:
+    rule: allow
+    port: "3000"
+    proto: tcp
+
+- name: Start monitoring stack
+  community.docker.docker_compose_v2:
+    project_src: /opt/lab-monitoring
+    state: present
