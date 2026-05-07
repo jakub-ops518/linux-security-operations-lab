@@ -1,0 +1,38 @@
+groups:
+  - name: linux-node-alerts
+    rules:
+      - alert: NodeExporterDown
+        expr: up{job="node_exporter"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "node_exporter is down"
+          description: "Prometheus cannot scrape node_exporter metrics from the Linux host."
+
+      - alert: HighCpuUsage
+        expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage has been above 80% for more than 2 minutes."
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage has been above 85% for more than 2 minutes."
+
+      - alert: HighRootDiskUsage
+        expr: 100 - ((node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} * 100) / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) > 85
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High root disk usage"
+          description: "Root filesystem usage has been above 85% for more than 2 minutes."
