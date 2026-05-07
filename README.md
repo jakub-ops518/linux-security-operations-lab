@@ -17,6 +17,8 @@ The goal of this project is to demonstrate practical Linux administration, infra
 - Prometheus deployed through Docker Compose
 - Grafana deployed through Docker Compose
 - node_exporter deployed for Linux host metrics
+- Prometheus datasource provisioned automatically in Grafana
+- Linux Node Overview dashboard provisioned automatically in Grafana
 - Monitoring ports allowed through UFW
 - Manual validation documented with screenshots and test notes
 - Ansible idempotence verified with repeated playbook runs
@@ -37,6 +39,8 @@ Windows Host
         └── Monitoring stack
             ├── Prometheus
             ├── Grafana
+            │   ├── Prometheus datasource
+            │   └── Linux Node Overview dashboard
             └── node_exporter
 ```
 
@@ -49,7 +53,7 @@ Windows Host
 | `fail2ban` | Configures SSH brute-force protection |
 | `docker` | Installs and enables Docker |
 | `nginx_container` | Deploys a containerized Nginx service |
-| `monitoring_stack` | Deploys Prometheus, Grafana, and node_exporter |
+| `monitoring_stack` | Deploys Prometheus, Grafana, node_exporter, Grafana datasource, and Grafana dashboard provisioning |
 
 ## Usage
 
@@ -146,13 +150,24 @@ prometheus      UP
 node_exporter   UP
 ```
 
-### Grafana availability
+### Grafana dashboard provisioning
 
-Grafana was validated through the browser:
+Grafana is provisioned automatically with a Prometheus datasource and a Linux Node Overview dashboard.
+
+Expected dashboard:
 
 ```txt
-http://<VM_IP_ADDRESS>:3000
+Dashboards -> Linux Security Operations Lab -> Linux Node Overview
 ```
+
+The dashboard includes:
+
+- CPU Busy
+- Memory Used
+- Root Disk Used
+- System Uptime
+- CPU Usage Over Time
+- Memory Usage Over Time
 
 ## Documentation
 
@@ -168,12 +183,15 @@ Current milestone:
 - Security baseline automated with Ansible
 - Dockerized Nginx service deployed
 - Prometheus, Grafana, and node_exporter deployed
+- Grafana Prometheus datasource provisioned automatically
+- Grafana Linux Node Overview dashboard provisioned automatically
 - UFW rules managed for SSH, HTTP, Prometheus, and Grafana
 - Validation documented with screenshots
 - Idempotence verified with repeated Ansible runs
 
 Next planned milestone:
 
-- Grafana dashboard provisioning through Ansible
 - Prometheus alerting rules
-- Log collection with Loki or a custom IDS integration
+- Alert validation for service availability and host resource usage
+- Log collection with Loki
+- Custom IDS integration for flow logs and live traffic analysis
