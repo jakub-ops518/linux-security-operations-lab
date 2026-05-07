@@ -2,7 +2,7 @@
 
 A production-style Linux security operations lab built on Ubuntu Server virtual machines and managed with Ansible.
 
-The goal of this project is to demonstrate practical Linux administration, infrastructure automation, basic security hardening, service deployment, and validation through documented tests.
+The goal of this project is to demonstrate practical Linux administration, infrastructure automation, basic security hardening, service deployment, monitoring, and validation through documented tests.
 
 ## Current Features
 
@@ -14,7 +14,12 @@ The goal of this project is to demonstrate practical Linux administration, infra
 - Docker installed through Ansible
 - Nginx container deployed through Ansible
 - HTTP access allowed through UFW
+- Prometheus deployed through Docker Compose
+- Grafana deployed through Docker Compose
+- node_exporter deployed for Linux host metrics
+- Monitoring ports allowed through UFW
 - Manual validation documented with screenshots and test notes
+- Ansible idempotence verified with repeated playbook runs
 
 ## Architecture
 
@@ -28,7 +33,11 @@ Windows Host
         ├── UFW
         ├── Fail2ban
         ├── Docker
-        └── Nginx container
+        ├── Nginx container
+        └── Monitoring stack
+            ├── Prometheus
+            ├── Grafana
+            └── node_exporter
 ```
 
 ## Ansible Roles
@@ -40,6 +49,7 @@ Windows Host
 | `fail2ban` | Configures SSH brute-force protection |
 | `docker` | Installs and enables Docker |
 | `nginx_container` | Deploys a containerized Nginx service |
+| `monitoring_stack` | Deploys Prometheus, Grafana, and node_exporter |
 
 ## Usage
 
@@ -56,6 +66,22 @@ Run the playbook:
 ```bash
 ansible-playbook -i ansible/inventory.ini ansible/site.yml
 ```
+
+Run the playbook again to verify idempotence:
+
+```bash
+ansible-playbook -i ansible/inventory.ini ansible/site.yml
+```
+
+A clean second run should report no unnecessary changes.
+
+## Exposed Services
+
+| Service | Port | URL |
+|---|---:|---|
+| Nginx | 80 | `http://<VM_IP_ADDRESS>` |
+| Prometheus | 9090 | `http://<VM_IP_ADDRESS>:9090` |
+| Grafana | 3000 | `http://<VM_IP_ADDRESS>:3000` |
 
 ## Validation
 
@@ -90,11 +116,50 @@ Expected response:
 <p>Baseline security: UFW + fail2ban.</p>
 ```
 
+### Prometheus readiness test
+
+Prometheus readiness was validated with:
+
+```bash
+curl http://<VM_IP_ADDRESS>:9090/-/ready
+```
+
+Expected response:
+
+```txt
+Prometheus Server is Ready.
+```
+
+### Prometheus target health
+
+Prometheus target health was checked in the web UI:
+
+```txt
+http://<VM_IP_ADDRESS>:9090
+Status -> Target health
+```
+
+Expected targets:
+
+```txt
+prometheus      UP
+node_exporter   UP
+```
+
+### Grafana availability
+
+Grafana was validated through the browser:
+
+```txt
+http://<VM_IP_ADDRESS>:3000
+```
+
 ## Documentation
 
 - [Security hardening](docs/security-hardening.md)
 - [Fail2ban SSH ban test](docs/fail2ban-ssh-ban-test.md)
 - [Nginx container deployment test](docs/validation/nginx-container-deployment.md)
+- [Monitoring stack deployment test](docs/monitoring-stack-deployment.md)
 
 ## Project Status
 
@@ -102,10 +167,13 @@ Current milestone:
 
 - Security baseline automated with Ansible
 - Dockerized Nginx service deployed
+- Prometheus, Grafana, and node_exporter deployed
+- UFW rules managed for SSH, HTTP, Prometheus, and Grafana
+- Validation documented with screenshots
 - Idempotence verified with repeated Ansible runs
 
 Next planned milestone:
 
-- Monitoring with Prometheus and Grafana
-- Node exporter on the managed VM
-- Dashboard and alerting validation
+- Grafana dashboard provisioning through Ansible
+- Prometheus alerting rules
+- Log collection with Loki or a custom IDS integration
