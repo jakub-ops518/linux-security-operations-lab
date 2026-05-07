@@ -71,7 +71,7 @@ node_exporter   UP
 
 Screenshots:
 
-![Prometheus targets](docs/screenshots/prometheus-targets.png)
+![Prometheus targets](doscreenshots/prometheus-targets.png)
 
 ![Grafana dashboard](docs/screenshots/grafana-node-dashboard.png)
 
