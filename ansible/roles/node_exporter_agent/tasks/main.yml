@@ -1,0 +1,21 @@
+---
+- name: Allow node_exporter access from observability node
+  community.general.ufw:
+    rule: allow
+    port: "9100"
+    proto: tcp
+    from_ip: "{{ hostvars[groups['observability'][0]].ansible_host }}"
+
+- name: Run node_exporter container
+  community.docker.docker_container:
+    name: lab-node-exporter
+    image: prom/node-exporter:latest
+    state: started
+    restart_policy: unless-stopped
+    recreate: true
+    command:
+      - "--path.rootfs=/host"
+    published_ports:
+      - "9100:9100"
+    volumes:
+      - "/:/host:ro,rslave"

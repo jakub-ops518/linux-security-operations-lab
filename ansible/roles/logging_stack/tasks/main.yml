@@ -6,24 +6,13 @@
     state: present
     reload: true
 
-- name: Create logging stack directories
+- name: Create logging stack directory
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: /opt/lab-logging
     state: directory
     owner: root
     group: root
     mode: "0755"
-  loop:
-    - /opt/lab-logging
-    - /opt/lab-logging/filebeat
-
-- name: Deploy Filebeat configuration
-  ansible.builtin.template:
-    src: filebeat.yml.j2
-    dest: /opt/lab-logging/filebeat/filebeat.yml
-    owner: root
-    group: root
-    mode: "0644"
 
 - name: Deploy Elastic Stack Docker Compose file
   ansible.builtin.template:

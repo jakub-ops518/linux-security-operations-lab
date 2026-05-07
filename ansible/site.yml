@@ -9,11 +9,27 @@
     - fail2ban
     - docker
 
-- name: Configure current application and observability services
+- name: Configure application node
   hosts: app
   become: true
 
   roles:
+    - app_observability_cleanup
     - nginx_container
+    - node_exporter_agent
+
+- name: Configure observability node
+  hosts: observability
+  become: true
+
+  roles:
+    - observability_cleanup
     - monitoring_stack
     - logging_stack
+
+- name: Configure application log shipper
+  hosts: app
+  become: true
+
+  roles:
+    - filebeat_agent
