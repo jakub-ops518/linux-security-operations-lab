@@ -7,3 +7,5 @@
     - common
     - firewall
     - fail2ban
+    - docker
+    - nginx_container

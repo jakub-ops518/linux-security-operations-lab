@@ -1,0 +1,33 @@
+---
+- name: Create Nginx web root directory
+  ansible.builtin.file:
+    path: /opt/lab-nginx/html
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy custom index.html
+  ansible.builtin.copy:
+    src: index.html
+    dest: /opt/lab-nginx/html/index.html
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Allow HTTP through UFW
+  community.general.ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+
+- name: Run Nginx container
+  community.docker.docker_container:
+    name: lab-nginx
+    image: nginx:stable
+    state: started
+    restart_policy: unless-stopped
+    published_ports:
+      - "80:80"
+    volumes:
+      - /opt/lab-nginx/html:/usr/share/nginx/html:ro
