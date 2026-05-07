@@ -77,6 +77,8 @@ Screenshots:
 
 ## Notes
 
+Grafana is provisioned automatically with a Prometheus datasource and a Linux Node Overview dashboard.
+
 This validates that the lab can collect host-level metrics and expose a dashboard-ready monitoring stack through the same Ansible workflow used for baseline security and service deployment.
 
 At this stage, Grafana is deployed and reachable. A dedicated Node Exporter dashboard can be added as a follow-up improvement.
