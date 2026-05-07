@@ -1,16 +1,45 @@
 ---
-- name: Create monitoring directory
+- name: Create monitoring directories
   ansible.builtin.file:
-    path: /opt/lab-monitoring/prometheus
+    path: "{{ item }}"
     state: directory
     owner: root
     group: root
     mode: "0755"
+  loop:
+    - /opt/lab-monitoring/prometheus
+    - /opt/lab-monitoring/grafana/provisioning/datasources
+    - /opt/lab-monitoring/grafana/provisioning/dashboards
+    - /opt/lab-monitoring/grafana/dashboards
 
 - name: Deploy Prometheus configuration
   ansible.builtin.template:
     src: prometheus.yml.j2
     dest: /opt/lab-monitoring/prometheus/prometheus.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy Grafana Prometheus datasource
+  ansible.builtin.template:
+    src: grafana-datasource.yml.j2
+    dest: /opt/lab-monitoring/grafana/provisioning/datasources/prometheus.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy Grafana dashboard provider
+  ansible.builtin.template:
+    src: grafana-dashboard-provider.yml.j2
+    dest: /opt/lab-monitoring/grafana/provisioning/dashboards/dashboard-provider.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy Linux Node Overview dashboard
+  ansible.builtin.template:
+    src: linux-node-overview.json.j2
+    dest: /opt/lab-monitoring/grafana/dashboards/linux-node-overview.json
     owner: root
     group: root
     mode: "0644"
@@ -39,3 +68,4 @@
   community.docker.docker_compose_v2:
     project_src: /opt/lab-monitoring
     state: present
+    recreate: auto
