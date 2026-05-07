@@ -29,6 +29,7 @@ The goal of this project is to demonstrate practical Linux administration, infra
 - Monitoring and logging ports allowed through UFW
 - Manual validation documented with screenshots and test notes
 - Ansible idempotence verified with repeated playbook runs
+- Second Ubuntu Server VM onboarded as `vm-observability-01` for future observability/logging split
 
 ## Architecture
 
@@ -269,6 +270,7 @@ curl "http://<VM_IP_ADDRESS>:9200/_cat/indices/logs-*?v"
 - [Prometheus alert rules validation](docs/validation/prometheus-alert-rules.md)
 - [NodeExporterDown alert test](docs/validation/node-exporter-down-alert-test.md)
 - [Elastic Stack logging Data Views](docs/validation/elastic-logging-data-views.md)
+- [Multi-node Ansible onboarding](docs/validation/multi-node-ansible-onboarding.md)
 
 ## Project Status
 
@@ -290,6 +292,7 @@ Current milestone:
 
 Next planned milestone:
 
+- Multi-node observability split
 - Kibana dashboard provisioning
 - Structured parsing for Nginx access logs
 - Elasticsearch ingest pipelines
