@@ -35,6 +35,54 @@ filebeat.inputs:
     fields_under_root: true
 
   - type: filestream
+    id: site-alpha-access-logs
+    enabled: true
+    paths:
+      - /host/srv/www/site-alpha/logs/access.log
+    fields:
+      log_type: site_alpha_access
+      lab_host: "{{ inventory_hostname }}"
+      site_name: site-alpha
+      service_name: multisite_php_hosting
+    fields_under_root: true
+
+  - type: filestream
+    id: site-alpha-error-logs
+    enabled: true
+    paths:
+      - /host/srv/www/site-alpha/logs/error.log
+    fields:
+      log_type: site_alpha_error
+      lab_host: "{{ inventory_hostname }}"
+      site_name: site-alpha
+      service_name: multisite_php_hosting
+    fields_under_root: true
+
+  - type: filestream
+    id: site-beta-access-logs
+    enabled: true
+    paths:
+      - /host/srv/www/site-beta/logs/access.log
+    fields:
+      log_type: site_beta_access
+      lab_host: "{{ inventory_hostname }}"
+      site_name: site-beta
+      service_name: multisite_php_hosting
+    fields_under_root: true
+
+  - type: filestream
+    id: site-beta-error-logs
+    enabled: true
+    paths:
+      - /host/srv/www/site-beta/logs/error.log
+    fields:
+      log_type: site_beta_error
+      lab_host: "{{ inventory_hostname }}"
+      site_name: site-beta
+      service_name: multisite_php_hosting
+    fields_under_root: true
+
+  - type: filestream
     id: docker-container-logs
     enabled: true
     parsers:
@@ -67,6 +115,22 @@ output.elasticsearch:
     - index: "logs-nginx-access-%{+yyyy.MM.dd}"
       when.equals:
         log_type: "nginx_access"
+
+    - index: "logs-site-alpha-access-%{+yyyy.MM.dd}"
+      when.equals:
+        log_type: "site_alpha_access"
+
+    - index: "logs-site-alpha-error-%{+yyyy.MM.dd}"
+      when.equals:
+        log_type: "site_alpha_error"
+
+    - index: "logs-site-beta-access-%{+yyyy.MM.dd}"
+      when.equals:
+        log_type: "site_beta_access"
+
+    - index: "logs-site-beta-error-%{+yyyy.MM.dd}"
+      when.equals:
+        log_type: "site_beta_error"
 
     - index: "logs-docker-%{+yyyy.MM.dd}"
       when.equals:

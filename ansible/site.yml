@@ -16,6 +16,7 @@
   roles:
     - app_observability_cleanup
     - nginx_container
+    - multi_site_php_hosting
     - node_exporter_agent
 
 - name: Configure observability node

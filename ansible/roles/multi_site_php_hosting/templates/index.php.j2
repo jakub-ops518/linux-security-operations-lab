@@ -1,0 +1,42 @@
+<?php
+$site_id = getenv('SITE_ID') ?: 'unknown-site';
+$app_instance = getenv('APP_INSTANCE') ?: gethostname();
+$container_hostname = gethostname();
+$request_id = $_SERVER['HTTP_X_REQUEST_ID'] ?? bin2hex(random_bytes(8));
+
+if (isset($_COOKIE['lab_visitor_id']) && $_COOKIE['lab_visitor_id'] !== '') {
+    $visitor_id = $_COOKIE['lab_visitor_id'];
+} else {
+    $visitor_id = 'visitor_' . bin2hex(random_bytes(8));
+    setcookie('lab_visitor_id', $visitor_id, [
+        'expires' => time() + 86400 * 30,
+        'path' => '/',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
+
+$time = date('Y-m-d H:i:s T');
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Linux Security Operations Lab - Multi-site PHP Hosting</title>
+</head>
+<body>
+  <h1>Linux Security Operations Lab</h1>
+  <h2>Multi-site PHP Apache Hosting</h2>
+
+  <p>This page is served by a PHP Apache backend behind an Nginx reverse proxy.</p>
+
+  <ul>
+    <li><strong>Site:</strong> <?php echo htmlspecialchars($site_id, ENT_QUOTES, 'UTF-8'); ?></li>
+    <li><strong>Backend instance:</strong> <?php echo htmlspecialchars($app_instance, ENT_QUOTES, 'UTF-8'); ?></li>
+    <li><strong>Container hostname:</strong> <?php echo htmlspecialchars($container_hostname, ENT_QUOTES, 'UTF-8'); ?></li>
+    <li><strong>Visitor ID:</strong> <?php echo htmlspecialchars($visitor_id, ENT_QUOTES, 'UTF-8'); ?></li>
+    <li><strong>Request ID:</strong> <?php echo htmlspecialchars($request_id, ENT_QUOTES, 'UTF-8'); ?></li>
+    <li><strong>Rendered at:</strong> <?php echo htmlspecialchars($time, ENT_QUOTES, 'UTF-8'); ?></li>
+  </ul>
+</body>
+</html>

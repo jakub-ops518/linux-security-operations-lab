@@ -1,0 +1,110 @@
+---
+- name: Remove old PHP hosting containers if present
+  community.docker.docker_container:
+    name: "{{ item }}"
+    state: absent
+    force_kill: true
+  loop:
+    - lab-php-web-nginx
+    - lab-php-apache-01
+    - lab-php-apache-02
+
+- name: Create per-site Linux groups
+  ansible.builtin.group:
+    name: "{{ item.group }}"
+    state: present
+  loop:
+    - { group: "site_alpha" }
+    - { group: "site_beta" }
+
+- name: Create per-site deployment users
+  ansible.builtin.user:
+    name: "{{ item.user }}"
+    group: "{{ item.group }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+    state: present
+  loop:
+    - { user: "site_alpha_deploy", group: "site_alpha" }
+    - { user: "site_beta_deploy", group: "site_beta" }
+
+- name: Create shared proxy directory
+  ansible.builtin.file:
+    path: /srv/www/_proxy
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create per-site root directories
+  ansible.builtin.file:
+    path: "/srv/www/{{ item.site }}"
+    state: directory
+    owner: root
+    group: "{{ item.group }}"
+    mode: "0755"
+  loop:
+    - { site: "site-alpha", group: "site_alpha" }
+    - { site: "site-beta", group: "site_beta" }
+
+- name: Create per-site public directories
+  ansible.builtin.file:
+    path: "/srv/www/{{ item.site }}/public"
+    state: directory
+    owner: "{{ item.user }}"
+    group: "{{ item.group }}"
+    mode: "0755"
+  loop:
+    - { site: "site-alpha", user: "site_alpha_deploy", group: "site_alpha" }
+    - { site: "site-beta", user: "site_beta_deploy", group: "site_beta" }
+
+- name: Create per-site log directories
+  ansible.builtin.file:
+    path: "/srv/www/{{ item.site }}/logs"
+    state: directory
+    owner: root
+    group: "{{ item.group }}"
+    mode: "0755"
+  loop:
+    - { site: "site-alpha", group: "site_alpha" }
+    - { site: "site-beta", group: "site_beta" }
+
+- name: Deploy per-site PHP application
+  ansible.builtin.template:
+    src: index.php.j2
+    dest: "/srv/www/{{ item.site }}/public/index.php"
+    owner: "{{ item.user }}"
+    group: "{{ item.group }}"
+    mode: "0644"
+  loop:
+    - { site: "site-alpha", user: "site_alpha_deploy", group: "site_alpha" }
+    - { site: "site-beta", user: "site_beta_deploy", group: "site_beta" }
+
+- name: Deploy multi-site Nginx reverse proxy configuration
+  ansible.builtin.template:
+    src: default.conf.j2
+    dest: /srv/www/_proxy/default.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy multi-site PHP hosting Docker Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /srv/www/docker-compose.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Allow multi-site PHP hosting port through UFW
+  community.general.ufw:
+    rule: allow
+    port: "8080"
+    proto: tcp
+
+- name: Start multi-site PHP hosting stack
+  community.docker.docker_compose_v2:
+    project_src: /srv/www
+    state: present
+    recreate: auto

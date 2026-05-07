@@ -2,13 +2,13 @@
 
 A production-style Linux security operations lab built on Ubuntu Server virtual machines and managed with Ansible.
 
-The goal of this project is to demonstrate practical Linux administration, infrastructure automation, security hardening, service deployment, monitoring, alerting, centralized logging, and validation through documented tests.
+The goal of this project is to demonstrate practical Linux administration, infrastructure automation, security hardening, service deployment, monitoring, alerting, centralized logging, multi-site web hosting, and validation through documented tests.
 
 ## Current State
 
 The lab currently runs as a multi-node Linux security operations environment.
 
-- `vm-app-01` runs the application service and lightweight observability agents.
+- `vm-app-01` runs application services and lightweight observability agents.
 - `vm-observability-01` runs monitoring and logging backend services.
 - WSL Ubuntu is used as the Ansible control node.
 
@@ -21,7 +21,15 @@ The lab currently runs as a multi-node Linux security operations environment.
 - UFW firewall with default-deny inbound policy
 - Fail2ban SSH brute-force protection
 - Docker installed through Ansible
-- Nginx container deployed on the application node
+- Baseline Nginx container deployed on the application node
+- Multi-site PHP Apache hosting deployed on the application node
+- Nginx reverse proxy for PHP Apache backend containers
+- Two separated PHP sites: `site-alpha` and `site-beta`
+- Two PHP Apache backend containers per site
+- Per-site Linux users and groups for ownership separation
+- Per-site document roots under `/srv/www`
+- Request ID and visitor ID correlation for web requests
+- Per-site access and error log separation
 - node_exporter deployed on the application node
 - Filebeat deployed on the application node
 - Prometheus deployed on the observability node
@@ -32,7 +40,7 @@ The lab currently runs as a multi-node Linux security operations environment.
 - Linux Node Overview dashboard provisioned automatically in Grafana
 - Prometheus alert rules deployed automatically
 - NodeExporterDown alert validated through simulated outage
-- Separate Elasticsearch index patterns for auth, Fail2ban, Nginx, and Docker logs
+- Separate Elasticsearch index patterns for auth, Fail2ban, Nginx, Docker, and site logs
 - Kibana Data Views created for switching between log categories
 - Monitoring and logging workloads split across dedicated nodes
 - Manual validation documented with screenshots and test notes
@@ -50,7 +58,14 @@ Windows Host
     │   ├── UFW
     │   ├── Fail2ban
     │   ├── Docker
-    │   ├── Nginx
+    │   ├── Baseline Nginx
+    │   │   └── lab-nginx
+    │   ├── Multi-site PHP hosting
+    │   │   ├── lab-multisite-nginx
+    │   │   ├── lab-site-alpha-php-01
+    │   │   ├── lab-site-alpha-php-02
+    │   │   ├── lab-site-beta-php-01
+    │   │   └── lab-site-beta-php-02
     │   ├── node_exporter
     │   └── Filebeat
     │
@@ -70,9 +85,9 @@ Windows Host
 ```txt
 HTTP traffic
     ↓
-Nginx on vm-app-01
+Nginx / PHP hosting on vm-app-01
     ↓
-Nginx access logs
+Access and error logs
     ↓
 Filebeat on vm-app-01
     ↓
@@ -101,7 +116,8 @@ Prometheus alert rules
 | `firewall` | Configures UFW firewall rules |
 | `fail2ban` | Configures SSH brute-force protection |
 | `docker` | Installs and enables Docker |
-| `nginx_container` | Deploys a containerized Nginx service |
+| `nginx_container` | Deploys the baseline Nginx container |
+| `multi_site_php_hosting` | Deploys multi-site PHP Apache hosting behind an Nginx reverse proxy |
 | `node_exporter_agent` | Deploys node_exporter on the application node |
 | `filebeat_agent` | Deploys Filebeat on the application node |
 | `monitoring_stack` | Deploys Prometheus, Grafana, Grafana provisioning, and Prometheus alert rules |
@@ -158,7 +174,8 @@ A clean second run should report no unnecessary changes.
 
 | Service | Host | Port | URL |
 |---|---|---:|---|
-| Nginx | `vm-app-01` | 80 | `http://<APP_VM_IP_ADDRESS>` |
+| Baseline Nginx | `vm-app-01` | 80 | `http://<APP_VM_IP_ADDRESS>` |
+| Multi-site PHP hosting | `vm-app-01` | 8080 | `http://<APP_VM_IP_ADDRESS>:8080` |
 | node_exporter | `vm-app-01` | 9100 | `http://<APP_VM_IP_ADDRESS>:9100/metrics` |
 | Prometheus | `vm-observability-01` | 9090 | `http://<OBSERVABILITY_VM_IP_ADDRESS>:9090` |
 | Grafana | `vm-observability-01` | 3000 | `http://<OBSERVABILITY_VM_IP_ADDRESS>:3000` |
@@ -206,6 +223,11 @@ Expected application node containers:
 
 ```txt
 lab-nginx
+lab-multisite-nginx
+lab-site-alpha-php-01
+lab-site-alpha-php-02
+lab-site-beta-php-01
+lab-site-beta-php-02
 lab-node-exporter
 lab-filebeat
 ```
@@ -225,20 +247,76 @@ lab-elasticsearch
 lab-kibana
 ```
 
-### Nginx container test
+### Baseline Nginx test
 
-The Nginx container deployment is validated with:
+The baseline Nginx container is validated with:
 
 ```bash
 curl http://<APP_VM_IP_ADDRESS>
 ```
 
-Expected response:
+### Multi-site PHP hosting test
 
-```html
-<h1>Linux Security Operations Lab</h1>
-<p>Nginx container deployed with Ansible.</p>
-<p>Baseline security: UFW + fail2ban.</p>
+Site Alpha is validated with:
+
+```bash
+curl -i http://<APP_VM_IP_ADDRESS>:8080/site-alpha/
+```
+
+Site Beta is validated with:
+
+```bash
+curl -i http://<APP_VM_IP_ADDRESS>:8080/site-beta/
+```
+
+The reverse proxy health endpoint is validated with:
+
+```bash
+curl http://<APP_VM_IP_ADDRESS>:8080/health
+```
+
+### PHP backend load balancing
+
+Site Alpha load balancing:
+
+```bash
+for i in {1..20}; do
+  curl -s http://<APP_VM_IP_ADDRESS>:8080/site-alpha/ | grep -o "site-alpha-php-[0-9][0-9]"
+done
+```
+
+Site Beta load balancing:
+
+```bash
+for i in {1..20}; do
+  curl -s http://<APP_VM_IP_ADDRESS>:8080/site-beta/ | grep -o "site-beta-php-[0-9][0-9]"
+done
+```
+
+Expected result:
+
+```txt
+site-alpha-php-01
+site-alpha-php-02
+site-beta-php-01
+site-beta-php-02
+```
+
+### Site ownership and permissions
+
+Ownership is validated with:
+
+```bash
+ansible app -i ansible/inventory.ini -m command -a "stat -c '%U:%G %a %n' /srv/www/site-alpha /srv/www/site-alpha/public /srv/www/site-beta /srv/www/site-beta/public" -b
+```
+
+Expected model:
+
+```txt
+root:site_alpha /srv/www/site-alpha
+site_alpha_deploy:site_alpha /srv/www/site-alpha/public
+root:site_beta /srv/www/site-beta
+site_beta_deploy:site_beta /srv/www/site-beta/public
 ```
 
 ### Prometheus readiness test
@@ -280,15 +358,6 @@ Expected dashboard:
 Dashboards -> Linux Security Operations Lab -> Linux Node Overview
 ```
 
-The dashboard includes:
-
-- CPU Busy
-- Memory Used
-- Root Disk Used
-- System Uptime
-- CPU Usage Over Time
-- Memory Usage Over Time
-
 ### Prometheus alert rules
 
 Prometheus alert rules are deployed automatically through Ansible.
@@ -306,30 +375,6 @@ Alert rules can be checked in the Prometheus web UI:
 
 ```txt
 http://<OBSERVABILITY_VM_IP_ADDRESS>:9090/alerts
-```
-
-### NodeExporterDown alert test
-
-The `NodeExporterDown` alert was validated by intentionally stopping the `lab-node-exporter` container on the application node.
-
-```bash
-docker stop lab-node-exporter
-```
-
-Expected alert:
-
-```txt
-Alert: NodeExporterDown
-Expression: up{job="node_exporter"} == 0
-Severity: critical
-State: PENDING or FIRING
-Value: 0
-```
-
-The service was restored after the test:
-
-```bash
-docker start lab-node-exporter
 ```
 
 ### Elasticsearch readiness test
@@ -357,6 +402,10 @@ Kibana Data Views were created for switching between centralized log categories.
 | Fail2ban Events | `logs-fail2ban-*` |
 | Nginx Access Logs | `logs-nginx-access-*` |
 | Docker Container Logs | `logs-docker-*` |
+| Site Alpha Access Logs | `logs-site-alpha-access-*` |
+| Site Alpha Error Logs | `logs-site-alpha-error-*` |
+| Site Beta Access Logs | `logs-site-beta-access-*` |
+| Site Beta Error Logs | `logs-site-beta-error-*` |
 | All Lab Logs | `logs-*` |
 
 Logging indices can be checked with:
@@ -376,6 +425,7 @@ curl "http://<OBSERVABILITY_VM_IP_ADDRESS>:9200/_cat/indices/logs-*?v"
 - [Elastic Stack logging Data Views](docs/validation/elastic-logging-data-views.md)
 - [Multi-node Ansible onboarding](docs/validation/multi-node-ansible-onboarding.md)
 - [Multi-node observability split](docs/validation/multi-node-observability-split.md)
+- [Multi-site PHP Apache hosting](docs/validation/multi-site-php-hosting.md)
 
 ## License
 
@@ -388,7 +438,13 @@ All rights reserved. See [LICENSE](LICENSE).
 Current milestone:
 
 - Security baseline automated with Ansible
-- Dockerized Nginx service deployed on the application node
+- Baseline Nginx service deployed on the application node
+- Multi-site PHP Apache hosting deployed on the application node
+- Nginx reverse proxy deployed for multi-site PHP hosting
+- Two separated PHP sites deployed with two backend containers per site
+- Per-site Linux ownership and permission model implemented
+- Request ID and visitor ID correlation added to PHP hosting flow
+- Per-site access and error logs collected by Filebeat
 - node_exporter deployed on the application node
 - Filebeat deployed on the application node
 - Prometheus and Grafana deployed on the observability node
@@ -396,7 +452,7 @@ Current milestone:
 - Grafana Prometheus datasource provisioned automatically
 - Grafana Linux Node Overview dashboard provisioned automatically
 - Prometheus alert rules deployed automatically
-- Centralized logging configured for auth, Fail2ban, Nginx, and Docker logs
+- Centralized logging configured for auth, Fail2ban, Nginx, Docker, and site logs
 - Kibana Data Views created for separate log categories
 - Monitoring and logging workloads split across dedicated nodes
 - Validation documented with screenshots and test notes
@@ -404,8 +460,10 @@ Current milestone:
 
 Next planned milestone:
 
+- Add screenshots for multi-site PHP hosting validation
+- Add Kibana Discover screenshots for site access and error logs
 - Alertmanager integration
-- Kibana dashboard provisioning
-- Structured parsing for Nginx access logs
+- Kibana dashboard provisioning for site traffic
+- Structured parsing for Nginx and site access logs
 - Elasticsearch ingest pipelines
 - Custom IDS integration for flow logs and live traffic analysis

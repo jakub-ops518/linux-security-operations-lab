@@ -1,0 +1,74 @@
+log_format lab_web
+  'remote_addr=$remote_addr '
+  'time="$time_local" '
+  'method=$request_method '
+  'uri="$request_uri" '
+  'status=$status '
+  'bytes=$body_bytes_sent '
+  'request_time=$request_time '
+  'upstream_addr="$upstream_addr" '
+  'upstream_status="$upstream_status" '
+  'request_id="$request_id" '
+  'visitor_id="$cookie_lab_visitor_id" '
+  'user_agent="$http_user_agent"';
+
+upstream site_alpha_backend {
+    server site-alpha-php-01:80;
+    server site-alpha-php-02:80;
+}
+
+upstream site_beta_backend {
+    server site-beta-php-01:80;
+    server site-beta-php-02:80;
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    location = /health {
+        add_header Content-Type text/plain;
+        return 200 "ok\n";
+    }
+
+    location /site-alpha/ {
+        access_log /var/log/nginx/site-alpha/access.log lab_web;
+        error_log /var/log/nginx/site-alpha/error.log warn;
+
+        proxy_pass http://site_alpha_backend/;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-ID $request_id;
+
+        add_header X-Lab-Site "site-alpha" always;
+        add_header X-Lab-Backend $upstream_addr always;
+        add_header X-Request-ID $request_id always;
+    }
+
+    location /site-beta/ {
+        access_log /var/log/nginx/site-beta/access.log lab_web;
+        error_log /var/log/nginx/site-beta/error.log warn;
+
+        proxy_pass http://site_beta_backend/;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-ID $request_id;
+
+        add_header X-Lab-Site "site-beta" always;
+        add_header X-Lab-Backend $upstream_addr always;
+        add_header X-Request-ID $request_id always;
+    }
+
+    location / {
+        add_header Content-Type text/plain;
+        return 200 "Available sites: /site-alpha/ and /site-beta/\n";
+    }
+}
