@@ -2,7 +2,7 @@
 
 A production-style Linux security operations lab built on Ubuntu Server virtual machines and managed with Ansible.
 
-The goal of this project is to demonstrate practical Linux administration, infrastructure automation, basic security hardening, service deployment, monitoring, and validation through documented tests.
+The goal of this project is to demonstrate practical Linux administration, infrastructure automation, basic security hardening, service deployment, monitoring, alerting, and validation through documented tests.
 
 ## Current Features
 
@@ -19,6 +19,8 @@ The goal of this project is to demonstrate practical Linux administration, infra
 - node_exporter deployed for Linux host metrics
 - Prometheus datasource provisioned automatically in Grafana
 - Linux Node Overview dashboard provisioned automatically in Grafana
+- Prometheus alert rules deployed automatically
+- NodeExporterDown alert validated through simulated outage
 - Monitoring ports allowed through UFW
 - Manual validation documented with screenshots and test notes
 - Ansible idempotence verified with repeated playbook runs
@@ -38,6 +40,7 @@ Windows Host
         ├── Nginx container
         └── Monitoring stack
             ├── Prometheus
+            │   └── Alert rules
             ├── Grafana
             │   ├── Prometheus datasource
             │   └── Linux Node Overview dashboard
@@ -53,7 +56,7 @@ Windows Host
 | `fail2ban` | Configures SSH brute-force protection |
 | `docker` | Installs and enables Docker |
 | `nginx_container` | Deploys a containerized Nginx service |
-| `monitoring_stack` | Deploys Prometheus, Grafana, node_exporter, Grafana datasource, and Grafana dashboard provisioning |
+| `monitoring_stack` | Deploys Prometheus, Grafana, node_exporter, Grafana provisioning, and Prometheus alert rules |
 
 ## Usage
 
@@ -169,12 +172,57 @@ The dashboard includes:
 - CPU Usage Over Time
 - Memory Usage Over Time
 
+### Prometheus alert rules
+
+Prometheus alert rules are deployed automatically through Ansible.
+
+Configured alert rules:
+
+```txt
+NodeExporterDown
+HighCpuUsage
+HighMemoryUsage
+HighRootDiskUsage
+```
+
+Alert rules can be checked in the Prometheus web UI:
+
+```txt
+http://<VM_IP_ADDRESS>:9090/alerts
+```
+
+### NodeExporterDown alert test
+
+The `NodeExporterDown` alert was validated by intentionally stopping the `lab-node-exporter` container.
+
+```bash
+docker stop lab-node-exporter
+```
+
+Expected alert:
+
+```txt
+Alert: NodeExporterDown
+Expression: up{job="node_exporter"} == 0
+Severity: critical
+State: PENDING or FIRING
+Value: 0
+```
+
+The service was restored after the test:
+
+```bash
+docker start lab-node-exporter
+```
+
 ## Documentation
 
 - [Security hardening](docs/security-hardening.md)
 - [Fail2ban SSH ban test](docs/fail2ban-ssh-ban-test.md)
 - [Nginx container deployment test](docs/validation/nginx-container-deployment.md)
 - [Monitoring stack deployment test](docs/monitoring-stack-deployment.md)
+- [Prometheus alert rules validation](docs/validation/prometheus-alert-rules.md)
+- [NodeExporterDown alert test](docs/validation/node-exporter-down-alert-test.md)
 
 ## Project Status
 
@@ -185,13 +233,15 @@ Current milestone:
 - Prometheus, Grafana, and node_exporter deployed
 - Grafana Prometheus datasource provisioned automatically
 - Grafana Linux Node Overview dashboard provisioned automatically
+- Prometheus alert rules deployed automatically
+- NodeExporterDown alert validated through simulated outage
 - UFW rules managed for SSH, HTTP, Prometheus, and Grafana
 - Validation documented with screenshots
 - Idempotence verified with repeated Ansible runs
 
 Next planned milestone:
 
-- Prometheus alerting rules
-- Alert validation for service availability and host resource usage
+- Alertmanager integration
+- Alert notification routing
 - Log collection with Loki
 - Custom IDS integration for flow logs and live traffic analysis
