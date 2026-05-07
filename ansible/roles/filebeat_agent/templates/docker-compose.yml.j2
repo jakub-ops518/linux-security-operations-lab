@@ -11,5 +11,7 @@ services:
       - /opt/lab-filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - /var/log:/host/var/log:ro
       - /opt/lab-nginx/logs:/host/opt/lab-nginx/logs:ro
+      - /srv/www/site-alpha/logs:/host/srv/www/site-alpha/logs:ro
+      - /srv/www/site-beta/logs:/host/srv/www/site-beta/logs:ro
       - /var/lib/docker/containers:/host/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
