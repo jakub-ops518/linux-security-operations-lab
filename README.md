@@ -6,11 +6,11 @@ The goal of this project is to demonstrate practical Linux administration, infra
 
 ## Current State
 
-The lab currently runs in a transitional multi-node state.
+The lab currently runs as a multi-node Linux security operations environment.
 
-- `vm-app-01` runs the application service and the current single-node monitoring/logging stack.
-- `vm-observability-01` has been onboarded into Ansible and prepared for a future observability/logging split.
-- The next major milestone is to migrate Prometheus, Grafana, Elasticsearch, and Kibana from `vm-app-01` to `vm-observability-01`.
+- `vm-app-01` runs the application service and lightweight observability agents.
+- `vm-observability-01` runs monitoring and logging backend services.
+- WSL Ubuntu is used as the Ansible control node.
 
 ## Current Features
 
@@ -21,21 +21,20 @@ The lab currently runs in a transitional multi-node state.
 - UFW firewall with default-deny inbound policy
 - Fail2ban SSH brute-force protection
 - Docker installed through Ansible
-- Nginx container deployed through Ansible
-- HTTP access allowed through UFW
-- Prometheus deployed through Docker Compose
-- Grafana deployed through Docker Compose
-- node_exporter deployed for Linux host metrics
+- Nginx container deployed on the application node
+- node_exporter deployed on the application node
+- Filebeat deployed on the application node
+- Prometheus deployed on the observability node
+- Grafana deployed on the observability node
+- Elasticsearch deployed on the observability node
+- Kibana deployed on the observability node
 - Prometheus datasource provisioned automatically in Grafana
 - Linux Node Overview dashboard provisioned automatically in Grafana
 - Prometheus alert rules deployed automatically
 - NodeExporterDown alert validated through simulated outage
-- Elasticsearch deployed through Docker Compose
-- Kibana deployed through Docker Compose
-- Filebeat deployed for centralized log collection
 - Separate Elasticsearch index patterns for auth, Fail2ban, Nginx, and Docker logs
 - Kibana Data Views created for switching between log categories
-- Second Ubuntu Server VM onboarded as `vm-observability-01`
+- Monitoring and logging workloads split across dedicated nodes
 - Manual validation documented with screenshots and test notes
 - Ansible idempotence verified with repeated playbook runs
 
@@ -51,48 +50,47 @@ Windows Host
     │   ├── UFW
     │   ├── Fail2ban
     │   ├── Docker
-    │   ├── Nginx container
-    │   ├── Monitoring stack
-    │   │   ├── Prometheus
-    │   │   │   └── Alert rules
-    │   │   ├── Grafana
-    │   │   │   ├── Prometheus datasource
-    │   │   │   └── Linux Node Overview dashboard
-    │   │   └── node_exporter
-    │   └── Logging stack
-    │       ├── Elasticsearch
-    │       ├── Kibana
-    │       └── Filebeat
+    │   ├── Nginx
+    │   ├── node_exporter
+    │   └── Filebeat
     │
     └── vm-observability-01
         ├── Ubuntu Server
         ├── UFW
         ├── Fail2ban
         ├── Docker
-        └── Prepared observability node
-```
-
-## Target Architecture
-
-The next planned architecture separates application workloads from observability workloads.
-
-```txt
-Windows Host
-├── WSL Ubuntu
-│   └── Ansible control node
-└── VMware Workstation Pro
-    ├── vm-app-01
-    │   ├── Nginx
-    │   ├── UFW
-    │   ├── Fail2ban
-    │   ├── node_exporter
-    │   └── Filebeat
-    │
-    └── vm-observability-01
         ├── Prometheus
         ├── Grafana
         ├── Elasticsearch
         └── Kibana
+```
+
+## Data Flow
+
+```txt
+HTTP traffic
+    ↓
+Nginx on vm-app-01
+    ↓
+Nginx access logs
+    ↓
+Filebeat on vm-app-01
+    ↓
+Elasticsearch on vm-observability-01
+    ↓
+Kibana Data Views
+```
+
+```txt
+Host metrics
+    ↓
+node_exporter on vm-app-01
+    ↓
+Prometheus on vm-observability-01
+    ↓
+Grafana dashboards
+    ↓
+Prometheus alert rules
 ```
 
 ## Ansible Roles
@@ -104,8 +102,12 @@ Windows Host
 | `fail2ban` | Configures SSH brute-force protection |
 | `docker` | Installs and enables Docker |
 | `nginx_container` | Deploys a containerized Nginx service |
-| `monitoring_stack` | Deploys Prometheus, Grafana, node_exporter, Grafana provisioning, and Prometheus alert rules |
-| `logging_stack` | Deploys Elasticsearch, Kibana, and Filebeat for centralized logging |
+| `node_exporter_agent` | Deploys node_exporter on the application node |
+| `filebeat_agent` | Deploys Filebeat on the application node |
+| `monitoring_stack` | Deploys Prometheus, Grafana, Grafana provisioning, and Prometheus alert rules |
+| `logging_stack` | Deploys Elasticsearch and Kibana |
+| `app_observability_cleanup` | Removes old backend containers from the application node |
+| `observability_cleanup` | Removes application-side containers from the observability node |
 
 ## Inventory Layout
 
@@ -152,19 +154,16 @@ ansible-playbook -i ansible/inventory.ini ansible/site.yml
 
 A clean second run should report no unnecessary changes.
 
-## Current Service Placement
+## Service Placement
 
-At this stage, the application, monitoring, and logging services still run on `vm-app-01`.
-
-| Service | Current host | Port | URL |
+| Service | Host | Port | URL |
 |---|---|---:|---|
 | Nginx | `vm-app-01` | 80 | `http://<APP_VM_IP_ADDRESS>` |
-| Prometheus | `vm-app-01` | 9090 | `http://<APP_VM_IP_ADDRESS>:9090` |
-| Grafana | `vm-app-01` | 3000 | `http://<APP_VM_IP_ADDRESS>:3000` |
-| Elasticsearch | `vm-app-01` | 9200 | `http://<APP_VM_IP_ADDRESS>:9200` |
-| Kibana | `vm-app-01` | 5601 | `http://<APP_VM_IP_ADDRESS>:5601` |
-
-`vm-observability-01` currently has only the common baseline installed. It is prepared for the next migration step.
+| node_exporter | `vm-app-01` | 9100 | `http://<APP_VM_IP_ADDRESS>:9100/metrics` |
+| Prometheus | `vm-observability-01` | 9090 | `http://<OBSERVABILITY_VM_IP_ADDRESS>:9090` |
+| Grafana | `vm-observability-01` | 3000 | `http://<OBSERVABILITY_VM_IP_ADDRESS>:3000` |
+| Elasticsearch | `vm-observability-01` | 9200 | `http://<OBSERVABILITY_VM_IP_ADDRESS>:9200` |
+| Kibana | `vm-observability-01` | 5601 | `http://<OBSERVABILITY_VM_IP_ADDRESS>:5601` |
 
 ## Validation
 
@@ -195,24 +194,40 @@ Expected result:
 root
 ```
 
-### Fail2ban SSH ban test
+### Service placement
 
-Fail2ban was tested against repeated failed SSH login attempts.
+Application node validation:
 
 ```bash
-sudo fail2ban-client status sshd
+ansible app -i ansible/inventory.ini -m command -a "docker ps" -b
 ```
 
-Expected result:
+Expected application node containers:
 
 ```txt
-Currently banned: 1
-Banned IP list: <HOST_PRIVATE_IP>
+lab-nginx
+lab-node-exporter
+lab-filebeat
+```
+
+Observability node validation:
+
+```bash
+ansible observability -i ansible/inventory.ini -m command -a "docker ps" -b
+```
+
+Expected observability node containers:
+
+```txt
+lab-prometheus
+lab-grafana
+lab-elasticsearch
+lab-kibana
 ```
 
 ### Nginx container test
 
-The Nginx container deployment was validated with:
+The Nginx container deployment is validated with:
 
 ```bash
 curl http://<APP_VM_IP_ADDRESS>
@@ -228,10 +243,10 @@ Expected response:
 
 ### Prometheus readiness test
 
-Prometheus readiness was validated with:
+Prometheus readiness is validated on the observability node with:
 
 ```bash
-curl http://<APP_VM_IP_ADDRESS>:9090/-/ready
+curl http://<OBSERVABILITY_VM_IP_ADDRESS>:9090/-/ready
 ```
 
 Expected response:
@@ -242,18 +257,17 @@ Prometheus Server is Ready.
 
 ### Prometheus target health
 
-Prometheus target health was checked in the web UI:
+Prometheus target health is checked in the web UI:
 
 ```txt
-http://<APP_VM_IP_ADDRESS>:9090
-Status -> Target health
+http://<OBSERVABILITY_VM_IP_ADDRESS>:9090/targets
 ```
 
-Expected targets:
+Expected target:
 
 ```txt
-prometheus      UP
-node_exporter   UP
+node_exporter UP
+instance="<APP_VM_IP_ADDRESS>:9100"
 ```
 
 ### Grafana dashboard provisioning
@@ -291,12 +305,12 @@ HighRootDiskUsage
 Alert rules can be checked in the Prometheus web UI:
 
 ```txt
-http://<APP_VM_IP_ADDRESS>:9090/alerts
+http://<OBSERVABILITY_VM_IP_ADDRESS>:9090/alerts
 ```
 
 ### NodeExporterDown alert test
 
-The `NodeExporterDown` alert was validated by intentionally stopping the `lab-node-exporter` container.
+The `NodeExporterDown` alert was validated by intentionally stopping the `lab-node-exporter` container on the application node.
 
 ```bash
 docker stop lab-node-exporter
@@ -320,10 +334,10 @@ docker start lab-node-exporter
 
 ### Elasticsearch readiness test
 
-Elasticsearch was validated with:
+Elasticsearch is validated on the observability node with:
 
 ```bash
-curl http://<APP_VM_IP_ADDRESS>:9200
+curl http://<OBSERVABILITY_VM_IP_ADDRESS>:9200
 ```
 
 Expected result:
@@ -348,7 +362,7 @@ Kibana Data Views were created for switching between centralized log categories.
 Logging indices can be checked with:
 
 ```bash
-curl "http://<APP_VM_IP_ADDRESS>:9200/_cat/indices/logs-*?v"
+curl "http://<OBSERVABILITY_VM_IP_ADDRESS>:9200/_cat/indices/logs-*?v"
 ```
 
 ## Documentation
@@ -361,36 +375,37 @@ curl "http://<APP_VM_IP_ADDRESS>:9200/_cat/indices/logs-*?v"
 - [NodeExporterDown alert test](docs/validation/node-exporter-down-alert-test.md)
 - [Elastic Stack logging Data Views](docs/validation/elastic-logging-data-views.md)
 - [Multi-node Ansible onboarding](docs/validation/multi-node-ansible-onboarding.md)
+- [Multi-node observability split](docs/validation/multi-node-observability-split.md)
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE).
+This repository is published for portfolio and educational review purposes only.
+
+All rights reserved. See [LICENSE](LICENSE).
 
 ## Project Status
 
 Current milestone:
 
 - Security baseline automated with Ansible
-- Dockerized Nginx service deployed
-- Prometheus, Grafana, and node_exporter deployed
+- Dockerized Nginx service deployed on the application node
+- node_exporter deployed on the application node
+- Filebeat deployed on the application node
+- Prometheus and Grafana deployed on the observability node
+- Elasticsearch and Kibana deployed on the observability node
 - Grafana Prometheus datasource provisioned automatically
 - Grafana Linux Node Overview dashboard provisioned automatically
 - Prometheus alert rules deployed automatically
-- NodeExporterDown alert validated through simulated outage
-- Elasticsearch, Kibana, and Filebeat deployed
 - Centralized logging configured for auth, Fail2ban, Nginx, and Docker logs
 - Kibana Data Views created for separate log categories
-- Second VM onboarded as `vm-observability-01`
-- Common baseline applied to both nodes
-- Existing single-node service layout kept functional during transition
-- Validation documented with screenshots
+- Monitoring and logging workloads split across dedicated nodes
+- Validation documented with screenshots and test notes
 - Idempotence verified with repeated Ansible runs
 
 Next planned milestone:
 
-- Split monitoring and logging roles into backend services and lightweight agents
-- Move Prometheus, Grafana, Elasticsearch, and Kibana to `vm-observability-01`
-- Keep Nginx, node_exporter, and Filebeat on `vm-app-01`
-- Update Prometheus scrape targets for the app node
-- Update Filebeat output to send logs to Elasticsearch on the observability node
-- Validate cross-node metrics and log ingestion
+- Alertmanager integration
+- Kibana dashboard provisioning
+- Structured parsing for Nginx access logs
+- Elasticsearch ingest pipelines
+- Custom IDS integration for flow logs and live traffic analysis

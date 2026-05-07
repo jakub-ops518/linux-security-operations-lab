@@ -28,25 +28,6 @@ services:
     networks:
       - logging
 
-  filebeat:
-    image: docker.elastic.co/beats/filebeat:8.15.3
-    container_name: lab-filebeat
-    restart: unless-stopped
-    user: root
-    depends_on:
-      - elasticsearch
-    command:
-      - "--strict.perms=false"
-      - "-e"
-    volumes:
-      - /opt/lab-logging/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
-      - /var/log:/host/var/log:ro
-      - /var/lib/docker/containers:/host/var/lib/docker/containers:ro
-      - /opt/lab-nginx/logs:/host/opt/lab-nginx/logs:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - logging
-
 volumes:
   elasticsearch_data:
 

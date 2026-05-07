@@ -1,0 +1,24 @@
+---
+- name: Remove old observability backend containers from app node
+  community.docker.docker_container:
+    name: "{{ item }}"
+    state: absent
+    force_kill: true
+  loop:
+    - lab-prometheus
+    - lab-grafana
+    - lab-elasticsearch
+    - lab-kibana
+
+- name: Remove old observability backend UFW rules from app node
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    delete: true
+  loop:
+    - "3000"
+    - "5601"
+    - "9090"
+    - "9200"
+  failed_when: false

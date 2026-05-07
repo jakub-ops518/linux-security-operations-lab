@@ -1,0 +1,36 @@
+---
+- name: Create Filebeat directory
+  ansible.builtin.file:
+    path: /opt/lab-filebeat
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy Filebeat configuration
+  ansible.builtin.template:
+    src: filebeat.yml.j2
+    dest: /opt/lab-filebeat/filebeat.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy Filebeat Docker Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/lab-filebeat/docker-compose.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Remove legacy Filebeat container if present
+  community.docker.docker_container:
+    name: lab-filebeat
+    state: absent
+    force_kill: true
+
+- name: Start Filebeat agent
+  community.docker.docker_compose_v2:
+    project_src: /opt/lab-filebeat
+    state: present
+    recreate: auto

@@ -25,17 +25,6 @@ services:
     networks:
       - monitoring
 
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: lab-node-exporter
-    restart: unless-stopped
-    command:
-      - "--path.rootfs=/host"
-    volumes:
-      - "/:/host:ro,rslave"
-    networks:
-      - monitoring
-
 volumes:
   prometheus_data:
   grafana_data:

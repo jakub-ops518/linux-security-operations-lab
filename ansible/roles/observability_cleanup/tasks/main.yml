@@ -1,0 +1,21 @@
+---
+- name: Remove application-side containers from observability node
+  community.docker.docker_container:
+    name: "{{ item }}"
+    state: absent
+    force_kill: true
+  loop:
+    - lab-nginx
+    - lab-filebeat
+    - lab-node-exporter
+
+- name: Remove application-side UFW rules from observability node
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    delete: true
+  loop:
+    - "80"
+    - "9100"
+  failed_when: false
