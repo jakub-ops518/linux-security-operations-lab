@@ -1,5 +1,5 @@
 ---
-- name: Configure Linux security operations baseline
+- name: Configure common Linux baseline
   hosts: all
   become: true
 
@@ -8,6 +8,12 @@
     - firewall
     - fail2ban
     - docker
+
+- name: Configure current application and observability services
+  hosts: app
+  become: true
+
+  roles:
     - nginx_container
     - monitoring_stack
     - logging_stack
