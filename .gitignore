@@ -1,0 +1,15 @@
+# IDE files
+.idea/
+
+# Local Ansible inventory
+ansible/inventory.ini
+
+# Accidental local SSH/key files
+yes
+yes.pub
+*.pem
+*.key
+
+# OS files
+.DS_Store
+Thumbs.db

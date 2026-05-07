@@ -1,0 +1,9 @@
+---
+- name: Configure Linux security operations baseline
+  hosts: all
+  become: true
+
+  roles:
+    - common
+    - firewall
+    - fail2ban
