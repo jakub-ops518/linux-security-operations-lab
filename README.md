@@ -362,6 +362,10 @@ curl "http://<APP_VM_IP_ADDRESS>:9200/_cat/indices/logs-*?v"
 - [Elastic Stack logging Data Views](docs/validation/elastic-logging-data-views.md)
 - [Multi-node Ansible onboarding](docs/validation/multi-node-ansible-onboarding.md)
 
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
+
 ## Project Status
 
 Current milestone:
