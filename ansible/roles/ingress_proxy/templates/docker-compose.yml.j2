@@ -27,6 +27,7 @@ services:
       - TENANT_ADMIN_SECRET={{ tenant_admin_portal_secret }}
       - TENANTS_FILE=/config/tenants.json
       - REGISTRY_FILE=/data/tenant-domains.json
+      - AUDIT_FILE=/data/audit.log
     volumes:
       - /opt/lab-tenant-admin/app.py:/app/app.py:ro
       - /opt/lab-tenant-admin/config:/config:ro
