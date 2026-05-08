@@ -18,6 +18,7 @@ BASE_PATH = os.environ.get("BASE_PATH", "/admin").rstrip("/")
 SESSION_SECRET = os.environ["TENANT_ADMIN_SECRET"]
 TENANTS_FILE = os.environ.get("TENANTS_FILE", "/config/tenants.json")
 REGISTRY_FILE = os.environ.get("REGISTRY_FILE", "/data/tenant-domains.json")
+AUDIT_FILE = os.environ.get("AUDIT_FILE", "/data/audit.log")
 
 DOMAIN_RE = re.compile(
     r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
@@ -45,13 +46,37 @@ def get_tenants():
 def get_registry():
     return load_json(REGISTRY_FILE, {})
 
+def audit_event(event_type, username="", domain="", status="ok", reason="", remote_addr=""):
+    event = {
+        "timestamp": int(time.time()),
+        "event_type": event_type,
+        "username": username,
+        "domain": domain,
+        "status": status,
+        "reason": reason,
+        "remote_addr": remote_addr,
+    }
+    os.makedirs(os.path.dirname(AUDIT_FILE), exist_ok=True)
+    with open(AUDIT_FILE, "a", encoding="utf-8") as f:
+        f.write(json.dumps(event, sort_keys=True) + "\n")
+
 def validate_domain(domain):
     domain = domain.strip().lower().rstrip(".")
     if not domain:
         return ""
+    if domain in {"localhost", "localdomain"}:
+        raise ValueError("Reserved local names are not allowed")
+    if domain.startswith("*."):
+        raise ValueError("Wildcard domains are not supported in this lab milestone")
     if not DOMAIN_RE.match(domain):
         raise ValueError("Invalid domain format")
     return domain
+
+def find_domain_owner(registry, domain):
+    for tenant_name, entry in registry.items():
+        if entry.get("domain", "").strip().lower().rstrip(".") == domain:
+            return tenant_name
+    return None
 
 def sign_session(username, expires):
     payload = f"{username}|{expires}"
@@ -98,7 +123,7 @@ def html_page(title, body):
 </html>"""
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "TenantAdmin/1.0"
+    server_version = "TenantAdmin/1.1"
 
     def clean_path(self):
         parsed = urlparse(self.path)
@@ -215,6 +240,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
 
+        remote_addr = self.headers.get("X-Real-IP", self.client_address[0])
+
         if path == "/login":
             form = self.read_form()
             username = form.get("username", "").strip()
@@ -222,8 +249,11 @@ class Handler(BaseHTTPRequestHandler):
             tenant = get_tenants().get(username)
 
             if not tenant or not hmac.compare_digest(password, tenant.get("password", "")):
+                audit_event("login", username=username, status="failed", reason="invalid_credentials", remote_addr=remote_addr)
                 self.login_page("Invalid username or password")
                 return
+
+            audit_event("login", username=username, status="ok", remote_addr=remote_addr)
 
             expires = int(time.time()) + 86400
             token = sign_session(username, expires)
@@ -237,6 +267,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/logout":
+            audit_event("logout", username=user, status="ok", remote_addr=remote_addr)
             cookie = f"tenant_admin_session=; Path={BASE_PATH}; HttpOnly; SameSite=Lax; Max-Age=0"
             self.redirect(f"{BASE_PATH}/", {"Set-Cookie": cookie})
             return
@@ -246,16 +277,29 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 domain = validate_domain(form.get("domain", ""))
             except ValueError as exc:
+                audit_event("domain_update", username=user, status="failed", reason=str(exc), remote_addr=remote_addr)
                 self.dashboard(user, str(exc), is_error=True)
                 return
 
             reg = get_registry()
+
+            if domain:
+                owner = find_domain_owner(reg, domain)
+                if owner and owner != user:
+                    reason = f"Domain already assigned to {owner}"
+                    audit_event("domain_update", username=user, domain=domain, status="failed", reason=reason, remote_addr=remote_addr)
+                    self.dashboard(user, reason, is_error=True)
+                    return
+
+            previous_domain = reg.get(user, {}).get("domain", "")
             reg[user] = {"domain": domain, "updated_at": int(time.time())}
             save_json_atomic(REGISTRY_FILE, reg)
 
             if domain:
+                audit_event("domain_update", username=user, domain=domain, status="ok", reason=f"previous={previous_domain}", remote_addr=remote_addr)
                 self.dashboard(user, f"Domain saved: {domain}. Ingress config will update automatically.")
             else:
+                audit_event("domain_remove", username=user, domain=previous_domain, status="ok", remote_addr=remote_addr)
                 self.dashboard(user, "Domain removed. Ingress config will update automatically.")
             return
 
