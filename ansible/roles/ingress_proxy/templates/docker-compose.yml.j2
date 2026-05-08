@@ -3,8 +3,40 @@ services:
     image: nginx:stable
     container_name: lab-ingress-nginx
     restart: unless-stopped
+    depends_on:
+      - tenant-admin
     ports:
       - "80:80"
     volumes:
       - /opt/lab-ingress/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/lab-ingress/dynamic:/etc/nginx/dynamic:ro
       - /opt/lab-ingress/logs:/var/log/nginx
+    networks:
+      - ingress
+
+  tenant-admin:
+    image: python:3.12-alpine
+    container_name: lab-tenant-admin
+    restart: unless-stopped
+    command:
+      - python
+      - /app/app.py
+    environment:
+      - BASE_PATH=/admin
+      - PORT=8080
+      - TENANT_ADMIN_SECRET={{ tenant_admin_portal_secret }}
+      - TENANTS_FILE=/config/tenants.json
+      - REGISTRY_FILE=/data/tenant-domains.json
+    volumes:
+      - /opt/lab-tenant-admin/app.py:/app/app.py:ro
+      - /opt/lab-tenant-admin/config:/config:ro
+      - /opt/lab-tenant-admin/data:/data
+    networks:
+      ingress:
+        aliases:
+          - tenant-admin
+          - lab-tenant-admin
+
+networks:
+  ingress:
+    driver: bridge

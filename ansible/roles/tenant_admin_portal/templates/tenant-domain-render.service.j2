@@ -1,0 +1,6 @@
+[Unit]
+Description=Render tenant domain ingress configuration
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/sbin/lab-render-tenant-domains

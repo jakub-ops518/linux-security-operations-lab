@@ -1,0 +1,269 @@
+{% raw %}
+#!/usr/bin/env python3
+import base64
+import hashlib
+import hmac
+import html
+import json
+import os
+import re
+import tempfile
+import time
+from http import cookies
+from http.server import BaseHTTPRequestHandler
+from socketserver import ThreadingTCPServer
+from urllib.parse import parse_qs, urlparse
+
+BASE_PATH = os.environ.get("BASE_PATH", "/admin").rstrip("/")
+SESSION_SECRET = os.environ["TENANT_ADMIN_SECRET"]
+TENANTS_FILE = os.environ.get("TENANTS_FILE", "/config/tenants.json")
+REGISTRY_FILE = os.environ.get("REGISTRY_FILE", "/data/tenant-domains.json")
+
+DOMAIN_RE = re.compile(
+    r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$"
+)
+
+def load_json(path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return default
+
+def save_json_atomic(path, data):
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".tenant-domains-", dir=directory, text=True)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, sort_keys=True)
+        f.write("\n")
+    os.replace(tmp, path)
+
+def get_tenants():
+    return load_json(TENANTS_FILE, {})
+
+def get_registry():
+    return load_json(REGISTRY_FILE, {})
+
+def validate_domain(domain):
+    domain = domain.strip().lower().rstrip(".")
+    if not domain:
+        return ""
+    if not DOMAIN_RE.match(domain):
+        raise ValueError("Invalid domain format")
+    return domain
+
+def sign_session(username, expires):
+    payload = f"{username}|{expires}"
+    sig = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    token = f"{payload}|{sig}"
+    return base64.urlsafe_b64encode(token.encode()).decode()
+
+def verify_session(token):
+    try:
+        raw = base64.urlsafe_b64decode(token.encode()).decode()
+        username, expires, sig = raw.split("|", 2)
+        payload = f"{username}|{expires}"
+        expected = hmac.new(SESSION_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        if int(expires) < int(time.time()):
+            return None
+        if username not in get_tenants():
+            return None
+        return username
+    except Exception:
+        return None
+
+def html_page(title, body):
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{html.escape(title)}</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; line-height: 1.5; }}
+    input {{ padding: 8px; min-width: 320px; }}
+    button {{ padding: 8px 14px; cursor: pointer; }}
+    code {{ background: #eee; padding: 2px 4px; }}
+    .card {{ border: 1px solid #ddd; padding: 20px; border-radius: 8px; }}
+    .error {{ color: #b00020; }}
+    .ok {{ color: #0a7f32; }}
+  </style>
+</head>
+<body>
+  <h1>Tenant Domain Administration</h1>
+  {body}
+</body>
+</html>"""
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "TenantAdmin/1.0"
+
+    def clean_path(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path == BASE_PATH:
+            return "/"
+        if path.startswith(BASE_PATH + "/"):
+            return path[len(BASE_PATH):] or "/"
+        return None
+
+    def send_html(self, status, content, headers=None):
+        body = content.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        if headers:
+            for key, value in headers.items():
+                self.send_header(key, value)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def redirect(self, location, headers=None):
+        self.send_response(302)
+        self.send_header("Location", location)
+        if headers:
+            for key, value in headers.items():
+                self.send_header(key, value)
+        self.end_headers()
+
+    def read_form(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length).decode("utf-8")
+        return {k: v[0] for k, v in parse_qs(body).items()}
+
+    def current_user(self):
+        raw_cookie = self.headers.get("Cookie", "")
+        jar = cookies.SimpleCookie()
+        jar.load(raw_cookie)
+        morsel = jar.get("tenant_admin_session")
+        if not morsel:
+            return None
+        return verify_session(morsel.value)
+
+    def login_page(self, message=""):
+        msg = f'<p class="error">{html.escape(message)}</p>' if message else ""
+        body = f"""
+<div class="card">
+  {msg}
+  <form method="post" action="{BASE_PATH}/login">
+    <p><label>Tenant<br><input name="username" autocomplete="username"></label></p>
+    <p><label>Password<br><input name="password" type="password" autocomplete="current-password"></label></p>
+    <button type="submit">Login</button>
+  </form>
+</div>
+"""
+        self.send_html(200, html_page("Tenant Login", body))
+
+    def dashboard(self, username, message="", is_error=False):
+        reg = get_registry()
+        tenant = get_tenants()[username]
+        current = reg.get(username, {}).get("domain", "")
+        site_path = tenant.get("site_path", "")
+        cls = "error" if is_error else "ok"
+        msg = f'<p class="{cls}">{html.escape(message)}</p>' if message else ""
+
+        body = f"""
+<div class="card">
+  <p><strong>Logged in as:</strong> {html.escape(username)}</p>
+  <p><strong>Assigned site path:</strong> <code>{html.escape(site_path)}</code></p>
+  <p><strong>Current domain:</strong> <code>{html.escape(current or "not configured")}</code></p>
+  {msg}
+
+  <form method="post" action="{BASE_PATH}/domain">
+    <p>
+      <label>Domain<br>
+      <input name="domain" value="{html.escape(current)}" placeholder="alpha.lab.local">
+      </label>
+    </p>
+    <button type="submit">Save domain</button>
+  </form>
+
+  <form method="post" action="{BASE_PATH}/domain" style="margin-top: 1rem;">
+    <input type="hidden" name="domain" value="">
+    <button type="submit">Remove domain</button>
+  </form>
+
+  <form method="post" action="{BASE_PATH}/logout" style="margin-top: 1rem;">
+    <button type="submit">Logout</button>
+  </form>
+</div>
+"""
+        self.send_html(200, html_page("Tenant Dashboard", body))
+
+    def do_GET(self):
+        path = self.clean_path()
+        if path is None:
+            self.send_error(404)
+            return
+
+        if path == "/health":
+            self.send_html(200, "ok\n")
+            return
+
+        user = self.current_user()
+        if not user:
+            self.login_page()
+            return
+
+        self.dashboard(user)
+
+    def do_POST(self):
+        path = self.clean_path()
+        if path is None:
+            self.send_error(404)
+            return
+
+        if path == "/login":
+            form = self.read_form()
+            username = form.get("username", "").strip()
+            password = form.get("password", "")
+            tenant = get_tenants().get(username)
+
+            if not tenant or not hmac.compare_digest(password, tenant.get("password", "")):
+                self.login_page("Invalid username or password")
+                return
+
+            expires = int(time.time()) + 86400
+            token = sign_session(username, expires)
+            cookie = f"tenant_admin_session={token}; Path={BASE_PATH}; HttpOnly; SameSite=Lax; Max-Age=86400"
+            self.redirect(f"{BASE_PATH}/", {"Set-Cookie": cookie})
+            return
+
+        user = self.current_user()
+        if not user:
+            self.redirect(f"{BASE_PATH}/")
+            return
+
+        if path == "/logout":
+            cookie = f"tenant_admin_session=; Path={BASE_PATH}; HttpOnly; SameSite=Lax; Max-Age=0"
+            self.redirect(f"{BASE_PATH}/", {"Set-Cookie": cookie})
+            return
+
+        if path == "/domain":
+            form = self.read_form()
+            try:
+                domain = validate_domain(form.get("domain", ""))
+            except ValueError as exc:
+                self.dashboard(user, str(exc), is_error=True)
+                return
+
+            reg = get_registry()
+            reg[user] = {"domain": domain, "updated_at": int(time.time())}
+            save_json_atomic(REGISTRY_FILE, reg)
+
+            if domain:
+                self.dashboard(user, f"Domain saved: {domain}. Ingress config will update automatically.")
+            else:
+                self.dashboard(user, "Domain removed. Ingress config will update automatically.")
+            return
+
+        self.send_error(404)
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "8080"))
+    with ThreadingTCPServer(("0.0.0.0", port), Handler) as httpd:
+        print(f"Tenant admin portal listening on 0.0.0.0:{port}{BASE_PATH}", flush=True)
+        httpd.serve_forever()
+{% endraw %}

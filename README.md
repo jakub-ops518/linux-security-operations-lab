@@ -23,6 +23,13 @@ The lab currently runs as a multi-node Linux security operations environment.
 - Fail2ban SSH brute-force protection
 - Docker installed through Ansible
 - Dedicated ingress node deployed as the external HTTP entry point
+- Dynamic tenant domain routing generated for Nginx ingress
+- Tenant-managed domain assignments implemented for hosted sites
+- Tenant domain admin portal deployed on the ingress node
+- Custom domain routing validated for `alpha.lab.local` and `beta.lab.local`
+- Dynamic Nginx ingress configuration generated from tenant domain registry
+- Tenant login for assigning one domain per hosted site
+- Tenant domain administration portal deployed on the ingress node
 - Nginx ingress proxy deployed on `vm-ingress-01`
 - Ingress access and error logs collected by Filebeat
 - Baseline Nginx container deployed on the application node
@@ -114,6 +121,20 @@ Kibana Data Views
 ```
 
 ```txt
+Tenant domain assignment
+    ↓
+Tenant admin portal on vm-ingress-01
+    ↓
+Tenant domain registry
+    ↓
+systemd renderer
+    ↓
+Generated Nginx ingress server blocks
+    ↓
+Tenant domain routing
+```
+
+```txt
 Ingress logs
     ↓
 Filebeat on vm-ingress-01
@@ -144,6 +165,7 @@ Prometheus alert rules
 | `fail2ban` | Configures SSH brute-force protection |
 | `docker` | Installs and enables Docker |
 | `ingress_proxy` | Deploys the dedicated Nginx ingress proxy |
+| `tenant_admin_portal` | Deploys the tenant domain admin portal and dynamic ingress domain renderer |
 | `ingress_filebeat_agent` | Deploys Filebeat on the ingress node |
 | `nginx_container` | Deploys the baseline Nginx container |
 | `multi_site_php_hosting` | Deploys multi-site PHP Apache hosting behind an internal Nginx reverse proxy |
@@ -207,6 +229,7 @@ A clean second run should report no unnecessary changes.
 | Service | Host | Port | URL |
 |---|---|---:|---|
 | Ingress proxy | `vm-ingress-01` | 80 | `http://<INGRESS_VM_IP_ADDRESS>` |
+| Tenant admin portal | `vm-ingress-01` | 80 | `http://<INGRESS_VM_IP_ADDRESS>/admin/` |
 | Baseline Nginx | `vm-app-01` | 80 | `http://<APP_VM_IP_ADDRESS>` |
 | Multi-site PHP hosting backend | `vm-app-01` | 8080 | restricted backend service |
 | node_exporter | `vm-app-01` | 9100 | `http://<APP_VM_IP_ADDRESS>:9100/metrics` |
@@ -278,6 +301,58 @@ lab-prometheus
 lab-grafana
 lab-elasticsearch
 lab-kibana
+```
+
+### Tenant domain admin portal
+
+The tenant domain admin portal is exposed through the ingress node:
+
+```bash
+curl -i http://<INGRESS_VM_IP_ADDRESS>/admin/
+```
+
+Expected result:
+
+```txt
+Tenant Domain Administration
+```
+
+The default ingress route remains separate from tenant domain routing:
+
+```bash
+curl -i http://<INGRESS_VM_IP_ADDRESS>/
+```
+
+Expected result:
+
+```txt
+Dedicated ingress layer. Available paths: /site-alpha/, /site-beta/, and /admin/
+```
+
+Tenant domain routing can be validated without DNS by using the HTTP `Host` header:
+
+```bash
+curl -i -H "Host: alpha.lab.local" http://<INGRESS_VM_IP_ADDRESS>/
+curl -i -H "Host: beta.lab.local" http://<INGRESS_VM_IP_ADDRESS>/
+```
+
+Expected result:
+
+```txt
+X-Lab-Tenant: site-alpha
+X-Lab-Tenant: site-beta
+```
+
+The generated ingress configuration is stored on the ingress node:
+
+```txt
+/opt/lab-ingress/dynamic/tenant-domains.conf
+```
+
+The renderer can be run manually with:
+
+```bash
+ansible ingress -i ansible/inventory.ini -m command -a "systemctl start tenant-domain-render.service" -b
 ```
 
 ### Dedicated ingress layer
@@ -482,6 +557,8 @@ tagline: You Know, for Search
 
 Kibana Data Views were created for switching between centralized log categories.
 
+Tenant admin portal requests are visible through the ingress access log stream.
+
 | Data View | Index pattern |
 |---|---|
 | Linux Auth Logs | `logs-linux-auth-*` |
@@ -515,6 +592,7 @@ curl "http://<OBSERVABILITY_VM_IP_ADDRESS>:9200/_cat/indices/logs-*?v"
 - [Multi-node observability split](docs/validation/multi-node-observability-split.md)
 - [Multi-site PHP Apache hosting](docs/validation/multi-site-php-hosting.md)
 - [Dedicated ingress layer](docs/validation/dedicated-ingress-layer.md)
+- [Tenant domain admin portal](docs/validation/tenant-domain-admin-portal.md)
 
 ## License
 
@@ -558,6 +636,7 @@ Next planned milestone:
 - Add screenshots for multi-site PHP hosting validation
 - Add Kibana Discover screenshots for site access and error logs
 - TLS preparation for the ingress layer
+- Normalize request ID propagation between ingress and application reverse proxy
 - Alertmanager integration
 - Kibana dashboard provisioning for ingress and site traffic
 - Structured parsing for Nginx, ingress, and site access logs
