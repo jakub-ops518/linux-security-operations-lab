@@ -2,12 +2,13 @@
 
 A production-style Linux security operations lab built on Ubuntu Server virtual machines and managed with Ansible.
 
-The goal of this project is to demonstrate practical Linux administration, infrastructure automation, security hardening, service deployment, monitoring, alerting, centralized logging, multi-site web hosting, and validation through documented tests.
+The goal of this project is to demonstrate practical Linux administration, infrastructure automation, security hardening, service deployment, monitoring, alerting, centralized logging, multi-site web hosting, ingress routing, and validation through documented tests.
 
 ## Current State
 
 The lab currently runs as a multi-node Linux security operations environment.
 
+- `vm-ingress-01` runs the dedicated ingress layer.
 - `vm-app-01` runs application services and lightweight observability agents.
 - `vm-observability-01` runs monitoring and logging backend services.
 - WSL Ubuntu is used as the Ansible control node.
@@ -21,6 +22,9 @@ The lab currently runs as a multi-node Linux security operations environment.
 - UFW firewall with default-deny inbound policy
 - Fail2ban SSH brute-force protection
 - Docker installed through Ansible
+- Dedicated ingress node deployed as the external HTTP entry point
+- Nginx ingress proxy deployed on `vm-ingress-01`
+- Ingress access and error logs collected by Filebeat
 - Baseline Nginx container deployed on the application node
 - Multi-site PHP Apache hosting deployed on the application node
 - Nginx reverse proxy for PHP Apache backend containers
@@ -30,6 +34,7 @@ The lab currently runs as a multi-node Linux security operations environment.
 - Per-site document roots under `/srv/www`
 - Request ID and visitor ID correlation for web requests
 - Per-site access and error log separation
+- Application backend port restricted to the ingress node
 - node_exporter deployed on the application node
 - Filebeat deployed on the application node
 - Prometheus deployed on the observability node
@@ -40,7 +45,7 @@ The lab currently runs as a multi-node Linux security operations environment.
 - Linux Node Overview dashboard provisioned automatically in Grafana
 - Prometheus alert rules deployed automatically
 - NodeExporterDown alert validated through simulated outage
-- Separate Elasticsearch index patterns for auth, Fail2ban, Nginx, Docker, and site logs
+- Separate Elasticsearch index patterns for auth, Fail2ban, Nginx, Docker, site, and ingress logs
 - Kibana Data Views created for switching between log categories
 - Monitoring and logging workloads split across dedicated nodes
 - Manual validation documented with screenshots and test notes
@@ -53,6 +58,16 @@ Windows Host
 ├── WSL Ubuntu
 │   └── Ansible control node
 └── VMware Workstation Pro
+    ├── vm-ingress-01
+    │   ├── Ubuntu Server
+    │   ├── UFW
+    │   ├── Fail2ban
+    │   ├── Docker
+    │   ├── Nginx ingress proxy
+    │   │   └── lab-ingress-nginx
+    │   └── Filebeat
+    │       └── lab-ingress-filebeat
+    │
     ├── vm-app-01
     │   ├── Ubuntu Server
     │   ├── UFW
@@ -85,11 +100,23 @@ Windows Host
 ```txt
 HTTP traffic
     ↓
-Nginx / PHP hosting on vm-app-01
+Nginx ingress proxy on vm-ingress-01
     ↓
-Access and error logs
+Multi-site PHP hosting on vm-app-01
+    ↓
+Site access and error logs
     ↓
 Filebeat on vm-app-01
+    ↓
+Elasticsearch on vm-observability-01
+    ↓
+Kibana Data Views
+```
+
+```txt
+Ingress logs
+    ↓
+Filebeat on vm-ingress-01
     ↓
 Elasticsearch on vm-observability-01
     ↓
@@ -116,8 +143,10 @@ Prometheus alert rules
 | `firewall` | Configures UFW firewall rules |
 | `fail2ban` | Configures SSH brute-force protection |
 | `docker` | Installs and enables Docker |
+| `ingress_proxy` | Deploys the dedicated Nginx ingress proxy |
+| `ingress_filebeat_agent` | Deploys Filebeat on the ingress node |
 | `nginx_container` | Deploys the baseline Nginx container |
-| `multi_site_php_hosting` | Deploys multi-site PHP Apache hosting behind an Nginx reverse proxy |
+| `multi_site_php_hosting` | Deploys multi-site PHP Apache hosting behind an internal Nginx reverse proxy |
 | `node_exporter_agent` | Deploys node_exporter on the application node |
 | `filebeat_agent` | Deploys Filebeat on the application node |
 | `monitoring_stack` | Deploys Prometheus, Grafana, Grafana provisioning, and Prometheus alert rules |
@@ -130,6 +159,9 @@ Prometheus alert rules
 The inventory is split into host groups:
 
 ```ini
+[ingress]
+vm-ingress-01 ansible_host=<INGRESS_VM_IP_ADDRESS> ansible_user=ansible ansible_ssh_private_key_file=<PATH_TO_PRIVATE_KEY>
+
 [app]
 vm-app-01 ansible_host=<APP_VM_IP_ADDRESS> ansible_user=ansible ansible_ssh_private_key_file=<PATH_TO_PRIVATE_KEY>
 
@@ -174,8 +206,9 @@ A clean second run should report no unnecessary changes.
 
 | Service | Host | Port | URL |
 |---|---|---:|---|
+| Ingress proxy | `vm-ingress-01` | 80 | `http://<INGRESS_VM_IP_ADDRESS>` |
 | Baseline Nginx | `vm-app-01` | 80 | `http://<APP_VM_IP_ADDRESS>` |
-| Multi-site PHP hosting | `vm-app-01` | 8080 | `http://<APP_VM_IP_ADDRESS>:8080` |
+| Multi-site PHP hosting backend | `vm-app-01` | 8080 | restricted backend service |
 | node_exporter | `vm-app-01` | 9100 | `http://<APP_VM_IP_ADDRESS>:9100/metrics` |
 | Prometheus | `vm-observability-01` | 9090 | `http://<OBSERVABILITY_VM_IP_ADDRESS>:9090` |
 | Grafana | `vm-observability-01` | 3000 | `http://<OBSERVABILITY_VM_IP_ADDRESS>:3000` |
@@ -245,6 +278,59 @@ lab-prometheus
 lab-grafana
 lab-elasticsearch
 lab-kibana
+```
+
+### Dedicated ingress layer
+
+Ingress containers are validated with:
+
+```bash
+ansible ingress -i ansible/inventory.ini -m command -a "docker ps" -b
+```
+
+Expected ingress containers:
+
+```txt
+lab-ingress-nginx
+lab-ingress-filebeat
+```
+
+Ingress health is validated with:
+
+```bash
+curl http://<INGRESS_VM_IP_ADDRESS>/health
+```
+
+Expected response:
+
+```txt
+ingress ok
+```
+
+Site Alpha and Site Beta are reached through the ingress node:
+
+```bash
+curl -i http://<INGRESS_VM_IP_ADDRESS>/site-alpha/
+curl -i http://<INGRESS_VM_IP_ADDRESS>/site-beta/
+```
+
+Expected response headers include:
+
+```txt
+X-Ingress-Node: vm-ingress-01
+X-Request-ID: <generated_request_id>
+```
+
+Application backend port access is restricted to the ingress node:
+
+```bash
+ansible app -i ansible/inventory.ini -m command -a "ufw status numbered" -b
+```
+
+Expected rule model:
+
+```txt
+8080/tcp ALLOW FROM <INGRESS_VM_IP_ADDRESS>
 ```
 
 ### Baseline Nginx test
@@ -406,6 +492,8 @@ Kibana Data Views were created for switching between centralized log categories.
 | Site Alpha Error Logs | `logs-site-alpha-error-*` |
 | Site Beta Access Logs | `logs-site-beta-access-*` |
 | Site Beta Error Logs | `logs-site-beta-error-*` |
+| Ingress Access Logs | `logs-ingress-access-*` |
+| Ingress Error Logs | `logs-ingress-error-*` |
 | All Lab Logs | `logs-*` |
 
 Logging indices can be checked with:
@@ -426,6 +514,7 @@ curl "http://<OBSERVABILITY_VM_IP_ADDRESS>:9200/_cat/indices/logs-*?v"
 - [Multi-node Ansible onboarding](docs/validation/multi-node-ansible-onboarding.md)
 - [Multi-node observability split](docs/validation/multi-node-observability-split.md)
 - [Multi-site PHP Apache hosting](docs/validation/multi-site-php-hosting.md)
+- [Dedicated ingress layer](docs/validation/dedicated-ingress-layer.md)
 
 ## License
 
@@ -438,6 +527,10 @@ All rights reserved. See [LICENSE](LICENSE).
 Current milestone:
 
 - Security baseline automated with Ansible
+- Dedicated ingress node deployed as the external HTTP entry point
+- Nginx ingress proxy deployed on `vm-ingress-01`
+- Ingress access and error logs collected by Filebeat
+- Application backend port restricted to the ingress node
 - Baseline Nginx service deployed on the application node
 - Multi-site PHP Apache hosting deployed on the application node
 - Nginx reverse proxy deployed for multi-site PHP hosting
@@ -452,18 +545,21 @@ Current milestone:
 - Grafana Prometheus datasource provisioned automatically
 - Grafana Linux Node Overview dashboard provisioned automatically
 - Prometheus alert rules deployed automatically
-- Centralized logging configured for auth, Fail2ban, Nginx, Docker, and site logs
+- Centralized logging configured for auth, Fail2ban, Nginx, Docker, site, and ingress logs
 - Kibana Data Views created for separate log categories
-- Monitoring and logging workloads split across dedicated nodes
+- Monitoring, application, and ingress workloads split across dedicated nodes
 - Validation documented with screenshots and test notes
 - Idempotence verified with repeated Ansible runs
 
 Next planned milestone:
 
+- Add screenshots for dedicated ingress validation
+- Add Kibana Discover screenshots for ingress access logs
 - Add screenshots for multi-site PHP hosting validation
 - Add Kibana Discover screenshots for site access and error logs
+- TLS preparation for the ingress layer
 - Alertmanager integration
-- Kibana dashboard provisioning for site traffic
-- Structured parsing for Nginx and site access logs
+- Kibana dashboard provisioning for ingress and site traffic
+- Structured parsing for Nginx, ingress, and site access logs
 - Elasticsearch ingest pipelines
 - Custom IDS integration for flow logs and live traffic analysis

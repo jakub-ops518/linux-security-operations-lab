@@ -19,6 +19,14 @@
     - multi_site_php_hosting
     - node_exporter_agent
 
+- name: Configure ingress node
+  hosts: ingress
+  become: true
+
+  roles:
+    - ingress_proxy
+    - ingress_filebeat_agent
+
 - name: Configure observability node
   hosts: observability
   become: true

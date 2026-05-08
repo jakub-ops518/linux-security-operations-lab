@@ -1,0 +1,40 @@
+---
+- name: Create ingress directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /opt/lab-ingress
+    - /opt/lab-ingress/nginx
+    - /opt/lab-ingress/logs
+
+- name: Deploy ingress Nginx configuration
+  ansible.builtin.template:
+    src: default.conf.j2
+    dest: /opt/lab-ingress/nginx/default.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy ingress Docker Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/lab-ingress/docker-compose.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Allow HTTP through UFW on ingress node
+  community.general.ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+
+- name: Start ingress proxy
+  community.docker.docker_compose_v2:
+    project_src: /opt/lab-ingress
+    state: present
+    recreate: auto

@@ -1,0 +1,30 @@
+---
+- name: Create ingress Filebeat directory
+  ansible.builtin.file:
+    path: /opt/lab-ingress-filebeat
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy ingress Filebeat configuration
+  ansible.builtin.template:
+    src: filebeat.yml.j2
+    dest: /opt/lab-ingress-filebeat/filebeat.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy ingress Filebeat Docker Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: /opt/lab-ingress-filebeat/docker-compose.yml
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Start ingress Filebeat agent
+  community.docker.docker_compose_v2:
+    project_src: /opt/lab-ingress-filebeat
+    state: present
+    recreate: auto
