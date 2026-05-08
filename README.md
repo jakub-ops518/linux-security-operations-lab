@@ -30,6 +30,10 @@ The lab currently runs as a multi-node Linux security operations environment.
 - Dynamic Nginx ingress configuration generated from tenant domain registry
 - Tenant login for assigning one domain per hosted site
 - Tenant domain administration portal deployed on the ingress node
+- Tenant admin hardening validation documented
+- Canonical ingress `X-Request-ID` propagation configured
+- Duplicate tenant domain assignment protection implemented
+- Tenant admin audit logging implemented
 - Nginx ingress proxy deployed on `vm-ingress-01`
 - Ingress access and error logs collected by Filebeat
 - Baseline Nginx container deployed on the application node
@@ -301,6 +305,52 @@ lab-prometheus
 lab-grafana
 lab-elasticsearch
 lab-kibana
+```
+
+### Tenant domain admin hardening
+
+Tenant domain administration was hardened with audit logging, duplicate domain protection, and normalized request ID propagation.
+
+Audit logs are stored on the ingress node:
+
+```txt
+/opt/lab-tenant-admin/data/audit.log
+```
+
+Audit log validation:
+
+```bash
+ansible ingress -i ansible/inventory.ini -m command -a "tail -n 20 /opt/lab-tenant-admin/data/audit.log" -b
+```
+
+Expected audit event types:
+
+```txt
+login
+logout
+domain_update
+domain_remove
+```
+
+Duplicate domain protection was validated by attempting to assign a domain already owned by another tenant.
+
+Expected failed audit event:
+
+```txt
+status: failed
+reason: Domain already assigned to <tenant>
+```
+
+Request ID propagation was normalized so responses expose a single canonical ingress request ID:
+
+```bash
+curl -i -H "Host: alpha.lab.local" http://<INGRESS_VM_IP_ADDRESS>/ | grep -i "X-Request-ID"
+```
+
+Expected result:
+
+```txt
+X-Request-ID: <single_request_id>
 ```
 
 ### Tenant domain admin portal
@@ -593,6 +643,7 @@ curl "http://<OBSERVABILITY_VM_IP_ADDRESS>:9200/_cat/indices/logs-*?v"
 - [Multi-site PHP Apache hosting](docs/validation/multi-site-php-hosting.md)
 - [Dedicated ingress layer](docs/validation/dedicated-ingress-layer.md)
 - [Tenant domain admin portal](docs/validation/tenant-domain-admin-portal.md)
+- [Tenant domain admin hardening](docs/validation/tenant-domain-admin-hardening.md)
 
 ## License
 
@@ -636,7 +687,10 @@ Next planned milestone:
 - Add screenshots for multi-site PHP hosting validation
 - Add Kibana Discover screenshots for site access and error logs
 - TLS preparation for the ingress layer
-- Normalize request ID propagation between ingress and application reverse proxy
+- Ship tenant admin audit logs to Elasticsearch as a dedicated index
+- Add CSRF protection for tenant admin forms
+- Add admin login rate limiting
+- Add Kibana Data View for tenant admin audit events
 - Alertmanager integration
 - Kibana dashboard provisioning for ingress and site traffic
 - Structured parsing for Nginx, ingress, and site access logs
