@@ -1,0 +1,12 @@
+services:
+  ingress-filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.3
+    container_name: lab-ingress-filebeat
+    restart: unless-stopped
+    user: root
+    command:
+      - "--strict.perms=false"
+      - "-e"
+    volumes:
+      - /opt/lab-ingress-filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /opt/lab-ingress/logs:/host/opt/lab-ingress/logs:ro

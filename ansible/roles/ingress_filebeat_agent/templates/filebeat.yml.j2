@@ -1,0 +1,45 @@
+setup.ilm.enabled: false
+setup.template.name: "lab-logs"
+setup.template.pattern: "logs-*"
+
+filebeat.inputs:
+  - type: filestream
+    id: ingress-access-logs
+    enabled: true
+    paths:
+      - /host/opt/lab-ingress/logs/access.log
+    fields:
+      log_type: ingress_access
+      lab_host: "{{ inventory_hostname }}"
+      service_name: ingress_proxy
+    fields_under_root: true
+
+  - type: filestream
+    id: ingress-error-logs
+    enabled: true
+    paths:
+      - /host/opt/lab-ingress/logs/error.log
+    fields:
+      log_type: ingress_error
+      lab_host: "{{ inventory_hostname }}"
+      service_name: ingress_proxy
+    fields_under_root: true
+
+processors:
+  - add_host_metadata: ~
+
+output.elasticsearch:
+  hosts:
+    - "http://{{ hostvars[groups['observability'][0]].ansible_host }}:9200"
+  index: "logs-generic-%{+yyyy.MM.dd}"
+  indices:
+    - index: "logs-ingress-access-%{+yyyy.MM.dd}"
+      when.equals:
+        log_type: "ingress_access"
+
+    - index: "logs-ingress-error-%{+yyyy.MM.dd}"
+      when.equals:
+        log_type: "ingress_error"
+
+setup.kibana:
+  host: "http://{{ hostvars[groups['observability'][0]].ansible_host }}:5601"

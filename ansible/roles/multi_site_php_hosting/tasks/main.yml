@@ -97,11 +97,20 @@
     group: root
     mode: "0644"
 
-- name: Allow multi-site PHP hosting port through UFW
+- name: Remove broad multi-site PHP hosting UFW rule if present
   community.general.ufw:
     rule: allow
     port: "8080"
     proto: tcp
+    delete: true
+  failed_when: false
+
+- name: Allow multi-site PHP hosting port from ingress node only
+  community.general.ufw:
+    rule: allow
+    port: "8080"
+    proto: tcp
+    from_ip: "{{ hostvars[groups['ingress'][0]].ansible_host }}"
 
 - name: Start multi-site PHP hosting stack
   community.docker.docker_compose_v2:

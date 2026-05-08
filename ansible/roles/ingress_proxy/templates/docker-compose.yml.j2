@@ -1,0 +1,10 @@
+services:
+  ingress-nginx:
+    image: nginx:stable
+    container_name: lab-ingress-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - /opt/lab-ingress/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/lab-ingress/logs:/var/log/nginx
