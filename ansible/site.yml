@@ -24,6 +24,7 @@
   become: true
 
   roles:
+    - tenant_admin_portal
     - ingress_proxy
     - ingress_filebeat_agent
 

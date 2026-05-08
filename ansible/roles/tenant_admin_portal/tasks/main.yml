@@ -1,0 +1,96 @@
+---
+- name: Validate tenant admin secrets are configured
+  ansible.builtin.assert:
+    that:
+      - tenant_admin_portal_secret is defined
+      - site_alpha_portal_password is defined
+      - site_beta_portal_password is defined
+      - tenant_admin_portal_secret != "<CHANGE_ME>"
+      - site_alpha_portal_password != "<CHANGE_ME>"
+      - site_beta_portal_password != "<CHANGE_ME>"
+    fail_msg: "Set tenant admin secrets in ansible/inventory.ini under [all:vars]."
+
+- name: Create tenant admin directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "/opt/lab-tenant-admin", mode: "0755" }
+    - { path: "/opt/lab-tenant-admin/config", mode: "0755" }
+    - { path: "/opt/lab-tenant-admin/data", mode: "0755" }
+    - { path: "/opt/lab-ingress/dynamic", mode: "0755" }
+
+- name: Check tenant admin application path
+  ansible.builtin.stat:
+    path: /opt/lab-tenant-admin/app.py
+  register: tenant_admin_app_path
+
+- name: Remove incorrectly created tenant admin application directory
+  ansible.builtin.file:
+    path: /opt/lab-tenant-admin/app.py
+    state: absent
+  when:
+    - tenant_admin_app_path.stat.exists
+    - tenant_admin_app_path.stat.isdir
+
+- name: Deploy tenant admin application
+  ansible.builtin.template:
+    src: app.py.j2
+    dest: /opt/lab-tenant-admin/app.py
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy tenant configuration
+  ansible.builtin.template:
+    src: tenants.json.j2
+    dest: /opt/lab-tenant-admin/config/tenants.json
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Ensure tenant registry exists
+  ansible.builtin.copy:
+    content: "{}\n"
+    dest: /opt/lab-tenant-admin/data/tenant-domains.json
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+
+- name: Deploy tenant domain renderer
+  ansible.builtin.template:
+    src: render_tenant_domains.py.j2
+    dest: /usr/local/sbin/lab-render-tenant-domains
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy tenant domain render service
+  ansible.builtin.template:
+    src: tenant-domain-render.service.j2
+    dest: /etc/systemd/system/tenant-domain-render.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy tenant domain render timer
+  ansible.builtin.template:
+    src: tenant-domain-render.timer.j2
+    dest: /etc/systemd/system/tenant-domain-render.timer
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable tenant domain render timer
+  ansible.builtin.systemd:
+    name: tenant-domain-render.timer
+    enabled: true
+    state: started

@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic tenant domain ingress configuration render
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=15s
+AccuracySec=5s
+Unit=tenant-domain-render.service
+
+[Install]
+WantedBy=timers.target
